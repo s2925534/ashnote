@@ -356,3 +356,21 @@ test("every photo piece stays under the relay size limit", async () => {
   assert.ok(sizes.length > 1);
   assert.ok(Math.max(...sizes) < 65_000, `largest event ${Math.max(...sizes)} bytes`);
 });
+
+test("replying clears the screen: no copy is kept on the sending phone", async () => {
+  const { A, B, a, b } = await pair();
+  await A.e.send(a.id, "hello");
+  await flush();
+  const got = B.e.state.contacts[b.id].messages[0];
+  await B.e.markRead(b.id, got.id);
+  // B replies with the option on: B's received message is deleted for both, and B keeps no copy of the reply
+  await B.e.deleteNow(b.id, got.id);
+  await B.e.send(b.id, "hi back", { keepCopy: false });
+  await B.e.sendImage(b.id, fakeJpeg(5, "Q"), 10, 10, { keepCopy: false });
+  await flush();
+  assert.equal(B.e.state.contacts[b.id].messages.length, 0, "nothing left on the replying phone");
+  const onA = A.e.state.contacts[a.id].messages;
+  assert.ok(!onA.some((m) => m.text === "hello"), "the original is gone from the sender too");
+  assert.ok(onA.some((m) => m.text === "hi back"), "the reply arrived");
+  assert.ok(onA.some((m) => m.image), "the photo arrived");
+});

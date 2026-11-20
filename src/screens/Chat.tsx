@@ -9,6 +9,7 @@ import { aliasFor } from "../core/identity";
 import { useEngine } from "../lib/engine";
 import { playSound } from "../lib/sounds";
 import { pickPhoto } from "../lib/photos";
+import { getReplyClears } from "../lib/prefs";
 import { AlertButtons } from "../ui/AlertButtons";
 import { Avatar } from "../ui/Avatar";
 import { Dialog, IconButton, Pills, Toast, Button } from "../ui/kit";
@@ -116,14 +117,25 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
     if (!r) return;
     if ("error" in r) { toast(r.error, "warn"); return; }
     playSound("sent");
-    engine.sendImage(contactId, r.b64, r.w, r.h);
+    const keep = !clearOnReply();
+    engine.sendImage(contactId, r.b64, r.w, r.h, { keepCopy: keep });
+    if (!keep) toast("Photo sent. No copy is kept on your phone.");
+  };
+  /** "Replying clears the screen": the message being answered is deleted for both phones. */
+  const clearOnReply = (): boolean => {
+    if (!getReplyClears()) return false;
+    const t = c && stackOf(c).top;
+    if (t && t.side === "theirs" && !t.alert) { leaveNext.current = "drift"; engine.deleteNow(contactId, t.id); }
+    return true;
   };
   const send = () => {
     const t = text.trim();
     if (!t) return;
     setText("");
     playSound("sent");
-    engine.send(contactId, t);
+    const keep = !clearOnReply();
+    engine.send(contactId, t, { keepCopy: keep });
+    if (!keep) toast("Sent. No copy is kept on your phone.");
   };
 
   return (

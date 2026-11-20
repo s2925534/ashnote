@@ -380,14 +380,18 @@ export class Engine {
     return this.publish(ev);
   }
 
-  async send(contactId: string, text: string): Promise<Msg | null> {
+  /**
+   * Sends a text message. With keepCopy false (the "Replying clears the screen" setting), this
+   * phone keeps no copy at all: the message exists only on the other phone.
+   */
+  async send(contactId: string, text: string, opts: { keepCopy?: boolean } = {}): Promise<Msg | null> {
     const c = this.state.contacts[contactId];
     const body = text.trim().slice(0, MAX_TEXT);
     if (!c || !body) return null;
     const now = this.deps.now();
     const m: Msg = { id: rid(), side: "mine", text: body, ttl: c.ttl, sentAt: now, order: ++this.state.seq, status: "sending",
       readAt: null, eff: null, expiresAt: null };
-    c.messages.push(m);
+    if (opts.keepCopy !== false) c.messages.push(m);
     this.changed();
     const ok = await this.sendInner(c, { t: "msg", id: m.id, text: body, ttl: c.ttl, at: now });
     if (c.messages.includes(m) && m.status === "sending") m.status = ok ? "sent" : "sending";
@@ -432,19 +436,20 @@ export class Engine {
    * Sends one photo (JPEG, base64) in pieces through the relays. Each piece is its own
    * ratchet message. On this phone the new photo replaces any earlier photo of ours on screen.
    */
-  async sendImage(contactId: string, b64: string, w: number, h: number): Promise<Msg | null> {
+  async sendImage(contactId: string, b64: string, w: number, h: number, opts: { keepCopy?: boolean } = {}): Promise<Msg | null> {
     const c = this.state.contacts[contactId];
     if (!c || !b64 || b64.length > MAX_IMAGE_B64) return null;
     const now = this.deps.now();
     c.messages = c.messages.filter((m) => !(m.side === "mine" && m.image)); // one photo of ours on screen
+    const keep = opts.keepCopy !== false;
     const m: Msg = { id: rid(), side: "mine", text: "", ttl: c.ttl, sentAt: now, order: ++this.state.seq, status: "sending",
-      readAt: null, eff: null, expiresAt: null, image: { data: b64, w, h }, progress: 0 };
-    c.messages.push(m);
+      readAt: null, eff: null, expiresAt: null, image: keep ? { data: b64, w, h } : undefined, progress: 0 };
+    if (keep) c.messages.push(m);
     this.changed();
     const n = Math.ceil(b64.length / IMAGE_CHUNK);
     let ok = true;
     for (let i = 0; i < n; i++) {
-      if (!c.messages.includes(m)) return m; // deleted while sending: stop
+      if (keep && !c.messages.includes(m)) return m; // deleted while sending: stop
       ok = (await this.sendInner(c, { t: "img", id: m.id, i, n, d: b64.slice(i * IMAGE_CHUNK, (i + 1) * IMAGE_CHUNK), w, h, ttl: c.ttl, at: now })) && ok;
       m.progress = (i + 1) / n;
       this.changed();

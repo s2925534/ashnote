@@ -21,6 +21,7 @@ Jira: VLABS-408 (epic).
 | Screen capture disabled on Android and iPhone (screenshots and recordings come out blank); an iPhone attempt is reported to the other person | `App.tsx`, `src/screens/Chat.tsx` |
 | SOS (life-threatening) and Help (not) alerts: hold to send with the phone's location, to every contact from the home screen or one contact from a chat; full-screen alert with vibration on the other phone; kept until dismissed | `src/ui/AlertButtons.tsx`, `src/ui/AlertOverlay.tsx`, `Engine.sendAlert` |
 | Photos: one per send, shrunk and re-encoded (hidden data such as GPS removed), sent encrypted in pieces through the relays; one on screen at a time, later ones queue behind it with a Show next photo button that deletes the current one for both phones; when its timer ends the next appears by itself; temporary files are deleted at once | `src/lib/photos.ts`, `Engine.sendImage`, `Engine.showNextImage` |
+| Replying clears the screen (on by default, Settings): sending deletes the message being answered for both phones, and the sender keeps no copy | `src/lib/prefs.ts`, `src/screens/Chat.tsx`, `Engine.send(…, { keepCopy })` |
 | Colour mode button (System, Light, Dark), remembered on the phone | `src/ui/kit.tsx`, `src/ui/theme.ts` |
 | Notification sounds, all off by default, one switch per event in Settings | `src/lib/sounds.ts`, `src/screens/Settings.tsx`, `tools/make_sounds.py` |
 | Pairing symbols show only while the code is valid: they explode if it expires unaccepted, and rise away with a tick once paired | `src/screens/Pairing.tsx`, `Engine.tick` |
