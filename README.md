@@ -18,7 +18,8 @@ Jira: VLABS-408 (epic).
 | One message on screen at a time; the one underneath only counts as read when it surfaces | `src/screens/Chat.tsx` |
 | Decode-in and dissolve-out animations (Reduce Motion gets fades) | `src/ui/MessageCard.tsx`, `src/ui/Particles.tsx` |
 | Encrypted local storage (SQLCipher, key in Keychain/Keystore), no backups | `src/lib/storage.ts`, `app.json` |
-| Screenshots blocked on Android; on iPhone the other person is told | `App.tsx`, `src/screens/Chat.tsx` |
+| Screen capture disabled on Android and iPhone (screenshots and recordings come out blank); an iPhone attempt is reported to the other person | `App.tsx`, `src/screens/Chat.tsx` |
+| Pairing symbols show only while the code is valid: they explode if it expires unaccepted, and rise away with a tick once paired | `src/screens/Pairing.tsx`, `Engine.tick` |
 
 `src/core` is plain TypeScript with no React Native imports, so the protocol is tested under Node.
 

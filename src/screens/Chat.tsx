@@ -44,13 +44,13 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
     for (const n of notices) {
       if (n.type === "ttl-changed" && n.contactId === c.id)
         toast(`${aliasFor(c.theirPub)} set their messages to ${n.ttl ? `delete ${TTL_LABELS[n.ttl]} after reading` : "be kept"}.`);
-      if (n.type === "screenshot" && n.contactId === c.id) toast(`${aliasFor(c.theirPub)} took a screenshot.`, "warn");
+      if (n.type === "screenshot" && n.contactId === c.id) toast(`${aliasFor(c.theirPub)} tried to take a screenshot. It was blocked.`, "warn");
     }
     clearNotices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notices]);
 
-  // iPhone can't block screenshots, so tell the other person when one is taken
+  // Screenshots come out blank (blocked on both platforms); on iPhone we can also tell the other person someone tried
   useEffect(() => {
     if (Platform.OS !== "ios" || !c) return;
     const sub = ScreenCapture.addScreenshotListener(() => engine.reportScreenshot(c.id));

@@ -6,7 +6,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { EngineProvider, useEngine } from "./src/lib/engine";
 import { Chat } from "./src/screens/Chat";
 import { Home } from "./src/screens/Home";
-import { InviteScreen, ScanScreen, VerifyScreen } from "./src/screens/Pairing";
+import { InviteScreen, ScanScreen, VerifyScreen, type PairOutcome } from "./src/screens/Pairing";
 import { Toast } from "./src/ui/kit";
 import { useTheme, type Theme } from "./src/ui/theme";
 
@@ -14,7 +14,7 @@ type Route =
   | { name: "home" }
   | { name: "invite" }
   | { name: "scan" }
-  | { name: "verify"; role: "host" | "guest"; safety: string[]; invitePub?: string }
+  | { name: "verify"; role: "host" | "guest"; safety: string[]; invitePub?: string; expiresAt: number; outcome: PairOutcome; contactId?: string }
   | { name: "chat"; id: string };
 
 function Screens({ theme }: { theme: Theme }) {
@@ -26,8 +26,18 @@ function Screens({ theme }: { theme: Theme }) {
   useEffect(() => {
     let handled = false;
     for (const n of notices) {
-      if (n.type === "pair-request" && route.name === "invite") { setRoute({ name: "verify", role: "host", safety: n.safety, invitePub: n.invitePub }); handled = true; }
-      if (n.type === "paired") { setRoute({ name: "chat", id: n.contactId }); handled = true; }
+      if (n.type === "pair-request" && route.name === "invite") {
+        setRoute({ name: "verify", role: "host", safety: n.safety, invitePub: n.invitePub, expiresAt: n.expiresAt, outcome: "pending" }); handled = true;
+      }
+      if (n.type === "paired") {
+        // let the symbols leave on a high note, then open the chat
+        setRoute((r) => (r.name === "verify" ? { ...r, outcome: "paired", contactId: n.contactId } : { name: "chat", id: n.contactId }));
+        handled = true;
+      }
+      if (n.type === "pair-expired") {
+        setRoute((r) => (r.name === "verify" && r.outcome === "pending" ? { ...r, outcome: "expired" } : r));
+        handled = true;
+      }
       if (n.type === "rejected") { setRoute({ name: "home" }); setToast("The other phone rejected the pairing."); handled = true; }
       if (n.type === "invite-expired" && route.name === "invite") { setRoute({ name: "home" }); setToast("Your invite code expired. Show a new one."); handled = true; }
     }
@@ -44,10 +54,16 @@ function Screens({ theme }: { theme: Theme }) {
       )}
       {route.name === "invite" && <InviteScreen theme={theme} onCancel={home} />}
       {route.name === "scan" && (
-        <ScanScreen theme={theme} onCancel={home} onScanned={(safety) => setRoute({ name: "verify", role: "guest", safety })} />
+        <ScanScreen theme={theme} onCancel={home}
+          onScanned={(safety, expiresAt) => setRoute({ name: "verify", role: "guest", safety, expiresAt, outcome: "pending" })} />
       )}
       {route.name === "verify" && (
-        <VerifyScreen theme={theme} role={route.role} safety={route.safety} invitePub={route.invitePub} onDone={home} />
+        <VerifyScreen theme={theme} role={route.role} safety={route.safety} invitePub={route.invitePub} expiresAt={route.expiresAt}
+          outcome={route.outcome} onDone={home}
+          onFinished={() => {
+            if (route.outcome === "paired" && route.contactId) setRoute({ name: "chat", id: route.contactId });
+            else { setRoute({ name: "home" }); setToast("The code expired before the pairing was accepted."); }
+          }} />
       )}
       {route.name === "chat" && <Chat theme={theme} contactId={route.id} onBack={home} />}
       {toast && <Toast text={toast} theme={theme} onDone={() => setToast(null)} />}
@@ -59,7 +75,8 @@ export default function App() {
   const theme = useTheme();
   useEffect(() => {
     if (Platform.OS === "web") return;
-    // Android: block screenshots and screen recording. iOS: hide content in the app switcher.
+    // Screen capture is disabled on both platforms (owner's rule): screenshots and screen recordings
+    // come out blank on Android (FLAG_SECURE) and iPhone (iOS 13+). iPhone also blurs the app switcher.
     ScreenCapture.preventScreenCaptureAsync("ashnote").catch(() => {});
     if (Platform.OS === "ios") ScreenCapture.enableAppSwitcherProtectionAsync(0.9).catch(() => {});
   }, []);
