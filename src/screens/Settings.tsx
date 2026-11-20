@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { DEFAULT_PREFS, SOUNDS, loadSoundPrefs, playSound, setSoundPref, type SoundPrefs } from "../lib/sounds";
+import { loadPrefs, setReplyClears } from "../lib/prefs";
 import { ColorModeButton, IconButton } from "../ui/kit";
 import { useThemeMode, type Theme } from "../ui/theme";
 
 export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }) {
   const [prefs, setPrefs] = useState<SoundPrefs>(DEFAULT_PREFS);
   const { mode } = useThemeMode();
-  useEffect(() => { loadSoundPrefs().then(setPrefs); }, []);
+  const [replyClears, setRC] = useState(true);
+  useEffect(() => { loadSoundPrefs().then(setPrefs); loadPrefs().then((p) => setRC(p.replyClears)); }, []);
   return (
     <View style={styles.fill}>
       <View style={[styles.head, { borderColor: theme.line }]}>
@@ -24,6 +26,19 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
             </Text>
           </View>
           <ColorModeButton theme={theme} />
+        </View>
+
+        <Text style={[styles.h, { color: theme.ink }]}>Conversation</Text>
+        <View style={[styles.row, { borderColor: theme.line }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.label, { color: theme.ink }]}>Replying clears the screen</Text>
+            <Text style={[styles.hint, { color: theme.muted }]}>
+              When you send, the message you were answering is deleted for both of you, and your phone keeps no copy of what you send. On by default.
+            </Text>
+          </View>
+          <Switch value={replyClears} accessibilityLabel="Replying clears the screen"
+            trackColor={{ false: theme.line, true: theme.accent }} thumbColor="#ffffff"
+            onValueChange={(v) => { setRC(v); setReplyClears(v); }} />
         </View>
 
         <Text style={[styles.h, { color: theme.ink }]}>Sounds</Text>

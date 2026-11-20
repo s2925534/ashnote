@@ -12,6 +12,7 @@ import { AlertOverlay } from "./src/ui/AlertOverlay";
 import { Toast } from "./src/ui/kit";
 import { Settings } from "./src/screens/Settings";
 import { loadSoundPrefs, playSound } from "./src/lib/sounds";
+import { loadPrefs } from "./src/lib/prefs";
 import { ThemeModeContext, isDark, useTheme, type Theme, type ThemeMode } from "./src/ui/theme";
 import { loadSetting, saveSetting } from "./src/lib/storage";
 
@@ -29,7 +30,7 @@ function Screens({ theme }: { theme: Theme }) {
   const [route, setRoute] = useState<Route>({ name: "home" });
   const [toast, setToast] = useState<string | null>(null);
 
-  useEffect(() => { loadSoundPrefs(); }, []);
+  useEffect(() => { loadSoundPrefs(); loadPrefs(); }, []);
 
   // pairing events move the screens along; each event has its own optional sound
   useEffect(() => {
