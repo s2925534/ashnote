@@ -4,7 +4,7 @@ import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import { useEngine } from "../lib/engine";
-import { allowLocation, currentLocation, locationStatus } from "../lib/location";
+import { currentLocation, locationStatus } from "../lib/location";
 import { Button, Dialog } from "./kit";
 import type { Theme } from "./theme";
 
@@ -56,7 +56,8 @@ export function AlertButtons({ theme, contactIds, scope, onSent }: {
     setAskHelp(false);
     setBusy(true);
     Haptics.notificationAsync(level === "sos" ? Haptics.NotificationFeedbackType.Error : Haptics.NotificationFeedbackType.Warning).catch(() => {});
-    const loc = withLocation ? await currentLocation() : null;
+    const loc = withLocation ? await currentLocation() : null; // first use: the phone asks for permission here
+    setPerm(await locationStatus());
     const n = await engine.sendAlert(contactIds, level, loc, withLocation);
     setBusy(false);
     onSent?.(`${level === "sos" ? "SOS" : "Help request"} sent to ${n === 1 ? "1 contact" : `${n} contacts`}${loc ? " with your location" : withLocation ? ". Your location wasn't available" : " without your location"}.`);
@@ -70,9 +71,6 @@ export function AlertButtons({ theme, contactIds, scope, onSent }: {
       <Text style={[styles.note, { color: theme.muted }]}>
         {busy ? "Sending…" : `Hold to alert ${scope}. SOS always includes your location; Help asks first. Ashnote doesn't contact emergency services: in danger, call your local emergency number (000 in Australia).`}
       </Text>
-      {perm === "undetermined" && (
-        <Button label="Allow location so SOS can include it" theme={theme} onPress={async () => { await allowLocation(); setPerm(await locationStatus()); }} />
-      )}
       {perm === "denied" && (
         <Text style={[styles.note, { color: theme.danger }]}>Location is off for Ashnote, so SOS will be sent without it. Turn it on in your phone's settings.</Text>
       )}

@@ -23,10 +23,15 @@ export async function allowLocation(): Promise<boolean> {
   }
 }
 
-/** Best location within about 6 seconds: a fresh fix, else the last known one, else null. Never prompts. */
+/**
+ * Best location within about 6 seconds: a fresh fix, else the last known one, else null.
+ * The phone asks for permission only the first time a feature needs it ("while using the app"
+ * only); after that, SOS reads the location without any prompt.
+ */
 export async function currentLocation(): Promise<Loc | null> {
   try {
-    const perm = await Location.getForegroundPermissionsAsync();
+    let perm = await Location.getForegroundPermissionsAsync();
+    if (perm.status !== "granted" && perm.canAskAgain) perm = await Location.requestForegroundPermissionsAsync();
     if (perm.status !== "granted") return null;
     const fresh = await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }), 6000);
     const pos = fresh ?? (await Location.getLastKnownPositionAsync());
