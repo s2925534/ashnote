@@ -53,3 +53,13 @@ export async function eraseAll() {
   const d = await open();
   d.execSync("DELETE FROM kv; VACUUM;");
 }
+
+export async function loadSetting(key: string): Promise<string | null> {
+  const d = await open();
+  const row = d.getFirstSync<{ v: string }>("SELECT v FROM kv WHERE k = ?", "setting:" + key);
+  return row ? row.v : null;
+}
+export async function saveSetting(key: string, value: string) {
+  const d = await open();
+  d.runSync("INSERT OR REPLACE INTO kv (k, v) VALUES (?, ?)", "setting:" + key, value);
+}

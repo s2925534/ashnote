@@ -3,13 +3,14 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { stackOf, type Contact } from "../core/engine";
 import { aliasFor } from "../core/identity";
 import { useEngine } from "../lib/engine";
+import { AlertButtons } from "../ui/AlertButtons";
 import { Avatar } from "../ui/Avatar";
-import { Button, Dialog, IconButton } from "../ui/kit";
+import { Button, ColorModeButton, Dialog, IconButton } from "../ui/kit";
 import { Mark } from "../ui/Mark";
 import type { Theme } from "../ui/theme";
 
-export function Home({ theme, onInvite, onScan, onOpen }: {
-  theme: Theme; onInvite: () => void; onScan: () => void; onOpen: (id: string) => void;
+export function Home({ theme, onInvite, onScan, onOpen, onToast, onSettings }: {
+  theme: Theme; onInvite: () => void; onScan: () => void; onOpen: (id: string) => void; onToast: (t: string) => void; onSettings: () => void;
 }) {
   const { engine, transport } = useEngine();
   const [confirm, setConfirm] = useState<Contact | null>(null);
@@ -20,9 +21,13 @@ export function Home({ theme, onInvite, onScan, onOpen }: {
     <View style={styles.fill}>
       <View style={styles.header}>
         <Text accessibilityRole="header" style={[styles.title, { color: theme.ink }]}>Ashnote</Text>
-        <View style={styles.status} accessibilityLabel={`${relays} relays connected`}>
-          <View style={[styles.dot, { backgroundColor: relays ? "#2fb36b" : theme.muted }]} />
-          <Text style={{ color: theme.muted, fontSize: 12 }}>{relays ? `${relays} relays` : "Connecting…"}</Text>
+        <View style={styles.headRight}>
+          <View style={styles.status} accessibilityLabel={`${relays} relays connected`}>
+            <View style={[styles.dot, { backgroundColor: relays ? "#2fb36b" : theme.muted }]} />
+            <Text style={{ color: theme.muted, fontSize: 12 }}>{relays ? `${relays} relay${relays === 1 ? "" : "s"}` : "Connecting…"}</Text>
+          </View>
+          <ColorModeButton theme={theme} />
+          <IconButton icon="gear" label="Settings" theme={theme} onPress={onSettings} />
         </View>
       </View>
 
@@ -70,6 +75,10 @@ export function Home({ theme, onInvite, onScan, onOpen }: {
       )}
 
       <View style={styles.bottom}>
+        {contacts.length > 0 && (
+          <AlertButtons theme={theme} contactIds={contacts.map((c) => c.id)} onSent={onToast}
+            scope={contacts.length === 1 ? "your contact" : `all ${contacts.length} contacts`} />
+        )}
         <Button label="Show invite code" primary theme={theme} onPress={onInvite} />
         <Button label="Scan a code" theme={theme} onPress={onScan} />
       </View>
@@ -90,6 +99,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 14 },
   title: { fontSize: 28, fontWeight: "700", letterSpacing: -0.4 },
   status: { flexDirection: "row", alignItems: "center", gap: 6 },
+  headRight: { flexDirection: "row", alignItems: "center", gap: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 12 },
   emptyTitle: { fontSize: 22, fontWeight: "700" },

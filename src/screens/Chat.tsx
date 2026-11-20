@@ -7,6 +7,8 @@ import { AccessibilityInfo, AppState, KeyboardAvoidingView, Platform, StyleSheet
 import { TTL_CHOICES, stackOf, type Msg } from "../core/engine";
 import { aliasFor } from "../core/identity";
 import { useEngine } from "../lib/engine";
+import { playSound } from "../lib/sounds";
+import { AlertButtons } from "../ui/AlertButtons";
 import { Avatar } from "../ui/Avatar";
 import { Dialog, IconButton, Pills, Toast, Button } from "../ui/kit";
 import { MessageCard, metaLine, type Enter, type Leave } from "../ui/MessageCard";
@@ -21,6 +23,7 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
   const c = engine.state.contacts[contactId];
   const [text, setText] = useState("");
   const [sheet, setSheet] = useState(false);
+  const [alertSheet, setAlertSheet] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string; tone?: "info" | "warn" }[]>([]);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [shown, setShown] = useState<Shown | null>(null);
@@ -74,6 +77,7 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
       riseNext.current = true;
       setShown(null);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      playSound("dissolve");
       return;
     }
     if (ghost) return; // wait for the dissolve to finish
@@ -108,6 +112,7 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
     const t = text.trim();
     if (!t) return;
     setText("");
+    playSound("sent");
     engine.send(contactId, t);
   };
 
@@ -120,6 +125,7 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
           <Text numberOfLines={1} style={[styles.alias, { color: theme.ink }]}>{aliasFor(c.theirPub)}</Text>
           <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 12 }}>You appear as {aliasFor(c.myPub)}</Text>
         </View>
+        <IconButton icon="alert" label="SOS or Help" theme={theme} danger onPress={() => setAlertSheet(true)} />
         <IconButton icon="gear" label="Disappearing messages" theme={theme} onPress={() => setSheet(true)} />
       </View>
       <Text style={[styles.banner, { color: theme.muted, borderColor: theme.line }]}>
@@ -163,6 +169,11 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
       {toasts.map((t) => (
         <Toast key={t.id} text={t.text} tone={t.tone} theme={theme} onDone={() => setToasts((x) => x.filter((y) => y.id !== t.id))} />
       ))}
+
+      <Dialog visible={alertSheet} onClose={() => setAlertSheet(false)} theme={theme} title={`Alert ${aliasFor(c.theirPub)}`}>
+        <AlertButtons theme={theme} contactIds={[c.id]} scope={aliasFor(c.theirPub)}
+          onSent={(t) => { setAlertSheet(false); toast(t); }} />
+      </Dialog>
 
       <Dialog visible={sheet} onClose={() => setSheet(false)} theme={theme} title="Disappearing messages">
         <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20 }}>
