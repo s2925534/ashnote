@@ -228,3 +228,22 @@ test("a screenshot on one phone is reported to the other", async () => {
   await flush();
   assert.ok(A.e.takeNotices().some((n) => n.type === "screenshot" && n.contactId === a.id));
 });
+
+test("pairing ends on both phones when the code expires before anyone accepts", async () => {
+  const relay = new FakeRelay();
+  const A = phone(relay), B = phone(relay);
+  const { code, invite } = A.e.createInvite();
+  await B.e.scan(code);
+  await flush();
+  assert.equal(Object.keys(A.e.state.requests).length, 1);
+  A.e.takeNotices(); B.e.takeNotices();
+  clock = invite.expiresAt + 1;
+  A.e.tick(); B.e.tick();
+  assert.equal(Object.keys(A.e.state.requests).length, 0, "host drops the request");
+  assert.equal(Object.keys(B.e.state.outgoing).length, 0, "scanner stops waiting");
+  assert.ok(A.e.takeNotices().some((n) => n.type === "pair-expired"));
+  assert.ok(B.e.takeNotices().some((n) => n.type === "pair-expired"));
+  await A.e.acceptRequest(invite.pub); // too late: nothing happens
+  await flush();
+  assert.equal(Object.keys(A.e.state.contacts).length + Object.keys(B.e.state.contacts).length, 0);
+});

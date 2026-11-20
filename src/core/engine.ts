@@ -39,8 +39,9 @@ export type Contact = {
   pairedAt: number;
 };
 
-type Outgoing = { invitePub: string; myPriv: string; myPub: string; safety: string[]; createdAt: number };
-type Request = { invitePub: string; requesterPub: string; safety: string[]; at: number };
+// Both sides of a pairing end when the invite code expires: the symbols are only shown until then.
+type Outgoing = { invitePub: string; myPriv: string; myPub: string; safety: string[]; createdAt: number; expiresAt: number };
+type Request = { invitePub: string; requesterPub: string; safety: string[]; at: number; expiresAt: number };
 type Outbox = { event: NostrEvent; until: number };
 
 export type State = {
@@ -57,12 +58,13 @@ export type State = {
 };
 
 export type Notice =
-  | { type: "pair-request"; invitePub: string; safety: string[] }
-  | { type: "waiting-accept"; safety: string[] }
+  | { type: "pair-request"; invitePub: string; safety: string[]; expiresAt: number }
+  | { type: "waiting-accept"; safety: string[]; expiresAt: number }
   | { type: "paired"; contactId: string }
   | { type: "rejected" }
   | { type: "ttl-changed"; contactId: string; ttl: number }
   | { type: "invite-expired" }
+  | { type: "pair-expired"; safety: string[] }
   | { type: "screenshot"; contactId: string };
 
 export interface Transport {
@@ -171,20 +173,20 @@ export class Engine {
   }
 
   /** The scanning phone: send a pairing request to the code's one-off key. */
-  async scan(code: string): Promise<{ ok: true; safety: string[] } | { ok: false; reason: string }> {
+  async scan(code: string): Promise<{ ok: true; safety: string[]; expiresAt: number } | { ok: false; reason: string }> {
     const now = this.deps.now();
     const d = decodeInvite(code, now);
     if (!d.ok) return d;
     if (this.state.invites[d.invite.k]) return { ok: false, reason: "That's your own code. Scan it from the other phone." };
     const me = newKeyPair();
     const safety = safetyCode(d.invite.k, me.pub);
-    this.state.outgoing[me.pub] = { invitePub: d.invite.k, myPriv: me.priv, myPub: me.pub, safety, createdAt: now };
+    this.state.outgoing[me.pub] = { invitePub: d.invite.k, myPriv: me.priv, myPub: me.pub, safety, createdAt: now, expiresAt: d.invite.e };
     for (const r of d.invite.r) if (!this.state.relays.includes(r)) this.state.relays.push(r);
     this.rewatch();
-    this.notify({ type: "waiting-accept", safety });
+    this.notify({ type: "waiting-accept", safety, expiresAt: d.invite.e });
     this.changed();
     await this.publish(wrap(me.priv, d.invite.k, JSON.stringify({ t: "pair", s: d.invite.s }), now, d.invite.e));
-    return { ok: true, safety };
+    return { ok: true, safety, expiresAt: d.invite.e };
   }
 
   async acceptRequest(invitePub: string) {
@@ -192,6 +194,11 @@ export class Engine {
     if (!req) return;
     delete this.state.requests[invitePub];
     const now = this.deps.now();
+    if (now >= req.expiresAt) {
+      this.notify({ type: "pair-expired", safety: req.safety });
+      this.changed();
+      return;
+    }
     const me = newKeyPair();
     this.state.contacts[me.pub] = this.newContact(me.priv, me.pub, req.requesterPub, now);
     this.rewatch();
@@ -243,9 +250,9 @@ export class Engine {
     inv.status = "used";
     inv.priv = null; // delete the one-off key for good
     const safety = safetyCode(inv.pub, opened.sender);
-    this.state.requests[inv.pub] = { invitePub: inv.pub, requesterPub: opened.sender, safety, at: this.deps.now() };
+    this.state.requests[inv.pub] = { invitePub: inv.pub, requesterPub: opened.sender, safety, at: this.deps.now(), expiresAt: inv.expiresAt };
     this.rewatch();
-    this.notify({ type: "pair-request", invitePub: inv.pub, safety });
+    this.notify({ type: "pair-request", invitePub: inv.pub, safety, expiresAt: inv.expiresAt });
     return true;
   }
 
@@ -255,6 +262,7 @@ export class Engine {
     let body: { t?: string };
     try { body = JSON.parse(opened.content); } catch { return false; }
     if (body.t === "accept") {
+      if (this.deps.now() >= out.expiresAt) return false;
       delete this.state.outgoing[out.myPub];
       this.state.contacts[out.myPub] = this.newContact(out.myPriv, out.myPub, opened.sender, this.deps.now());
       this.rewatch();
@@ -374,7 +382,7 @@ export class Engine {
     await this.sendInner(c, { t: "ttl", ttl });
   }
 
-  /** iPhone can't block screenshots, so the other person is told when one is taken. */
+  /** Screenshots are blocked; on iPhone the attempt is also reported to the other person. */
   async reportScreenshot(contactId: string) {
     const c = this.state.contacts[contactId];
     if (c) await this.sendInner(c, { t: "shot" });
@@ -404,7 +412,18 @@ export class Engine {
       }
     }
     for (const o of Object.values(this.state.outgoing)) {
-      if (now - o.createdAt > PAIR_TIMEOUT_MS) { delete this.state.outgoing[o.myPub]; dirty = true; }
+      if (now >= (o.expiresAt ?? o.createdAt + PAIR_TIMEOUT_MS)) {
+        delete this.state.outgoing[o.myPub];
+        this.notify({ type: "pair-expired", safety: o.safety });
+        dirty = true;
+      }
+    }
+    for (const r of Object.values(this.state.requests)) {
+      if (now >= r.expiresAt) {
+        delete this.state.requests[r.invitePub];
+        this.notify({ type: "pair-expired", safety: r.safety });
+        dirty = true;
+      }
     }
     for (const c of Object.values(this.state.contacts)) {
       const before = c.messages.length;
