@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import type { Msg } from "../core/engine";
+import { describeLocation, openInMaps } from "../lib/maps";
+import { Icon } from "./Icon";
 import { Particles, scramble } from "./Particles";
 import type { Theme } from "./theme";
 
@@ -17,8 +19,9 @@ export function MessageCard({ msg, from, now, theme, reduceMotion, enter, leave,
   onDoubleTap?: () => void; onRevealed?: () => void; onGone?: () => void;
 }) {
   const mine = msg.side === "mine";
-  const bg = mine ? theme.accent : theme.theirs;
-  const fg = mine ? theme.accentInk : theme.theirsInk;
+  const alert = msg.alert;
+  const bg = alert ? (alert.level === "sos" ? theme.danger : theme.amber) : mine ? theme.accent : theme.theirs;
+  const fg = alert ? "#ffffff" : mine ? theme.accentInk : theme.theirsInk;
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [text, setText] = useState(enter === "arrive" || (enter === "rise" && !mine && msg.readAt == null) ? scramble(msg.text, 0) : msg.text);
   const [forming, setForming] = useState(false);
@@ -117,9 +120,22 @@ export function MessageCard({ msg, from, now, theme, reduceMotion, enter, leave,
           style={[styles.card, { backgroundColor: bg }, fading && { opacity: 0.85 }]}
         >
           <Text style={[styles.from, { color: fg }]}>{mine ? "YOU" : from.toUpperCase()}</Text>
+          {alert && <Text style={[styles.alertTitle, { color: fg }]}>{alert.level === "sos" ? "SOS" : "HELP"}</Text>}
           <Text selectable={false} style={[styles.text, { color: fg, fontSize: fontSizeFor(msg.text.length), lineHeight: fontSizeFor(msg.text.length) * 1.3 }]}>
             {text}
           </Text>
+          {alert && (
+            <View style={styles.locBox}>
+              <Text style={[styles.locText, { color: fg }]}>{describeLocation(alert.loc, now)}</Text>
+              {alert.loc && (
+                <Pressable accessibilityRole="button" accessibilityLabel="Open the location in maps" onPress={() => alert.loc && openInMaps(alert.loc)}
+                  style={[styles.mapBtn, { borderColor: fg }]}>
+                  <Icon name="pin" color={fg} size={18} />
+                  <Text style={{ color: fg, fontWeight: "700" }}>Open in maps</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </Pressable>
         {size && frac != null && (
           <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width={size.w} height={size.h}>
@@ -135,6 +151,10 @@ export function MessageCard({ msg, from, now, theme, reduceMotion, enter, leave,
 }
 
 export function metaLine(msg: Msg, now: number): string {
+  if (msg.alert) {
+    if (msg.side === "mine") return msg.status === "sending" ? "Sending…" : msg.status === "read" ? "Seen · kept until dismissed" : "Sent · kept until dismissed";
+    return "Kept until you dismiss it · double-tap to dismiss";
+  }
   const left = (t: number) => {
     const s = Math.max(0, Math.ceil((t - now) / 1000));
     if (s < 60) return `${s}s`;
@@ -157,4 +177,8 @@ const styles = StyleSheet.create({
   card: { flex: 1, borderRadius: 26, paddingHorizontal: 22, paddingVertical: 36, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   from: { position: "absolute", top: 14, left: 18, fontSize: 11, fontWeight: "700", letterSpacing: 0.8, opacity: 0.75 },
   text: { textAlign: "center", fontWeight: "600" },
+  alertTitle: { fontSize: 44, fontWeight: "900", letterSpacing: 4, marginBottom: 6 },
+  locBox: { marginTop: 18, alignItems: "center", gap: 10 },
+  locText: { fontSize: 12, opacity: 0.9, textAlign: "center" },
+  mapBtn: { flexDirection: "row", gap: 6, alignItems: "center", borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
 });

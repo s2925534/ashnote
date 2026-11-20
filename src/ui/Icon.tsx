@@ -1,6 +1,6 @@
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
-export type IconName = "gear" | "send" | "trash" | "chat" | "qr" | "camera" | "back" | "close";
+export type IconName = "gear" | "send" | "trash" | "chat" | "qr" | "camera" | "back" | "close" | "alert" | "pin" | "system" | "sun" | "moon" | "play";
 
 export function Icon({ name, size = 20, color }: { name: IconName; size?: number; color: string }) {
   const p = { stroke: color, strokeWidth: 1.9, fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -31,6 +31,27 @@ export function Icon({ name, size = 20, color }: { name: IconName; size?: number
       )}
       {name === "back" && <Path d="M15 5l-7 7 7 7" {...p} />}
       {name === "close" && <Path d="M6 6l12 12M18 6L6 18" {...p} />}
+      {name === "system" && (
+        <>
+          <Rect x={3} y={4} width={18} height={12} rx={2} {...p} />
+          <Path d="M8 20h8M12 16v4" {...p} />
+        </>
+      )}
+      {name === "sun" && (
+        <>
+          <Circle cx={12} cy={12} r={4} {...p} />
+          <Path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" {...p} />
+        </>
+      )}
+      {name === "play" && <Path d="M8 5.5v13l10.5-6.5L8 5.5z" {...p} />}
+      {name === "moon" && <Path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" {...p} />}
+      {name === "alert" && <Path d="M12 3l9.5 17h-19L12 3zM12 10v4.5M12 17.5v.01" {...p} />}
+      {name === "pin" && (
+        <>
+          <Path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" {...p} />
+          <Circle cx={12} cy={10} r={2.3} {...p} />
+        </>
+      )}
     </Svg>
   );
 }

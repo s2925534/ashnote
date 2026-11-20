@@ -3,7 +3,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { Animated, Modal, Pressable, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { LinearGradientLike } from "./gradient";
 import { Icon, type IconName } from "./Icon";
-import type { Theme } from "./theme";
+import { NEXT_MODE, useThemeMode, type Theme } from "./theme";
 
 export function Button({ label, onPress, theme, primary, danger, disabled, style }: {
   label: string; onPress: () => void; theme: Theme; primary?: boolean; danger?: boolean; disabled?: boolean; style?: ViewStyle;
@@ -100,3 +100,11 @@ const styles = StyleSheet.create({
   pill: { borderWidth: 1, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14 },
   toast: { position: "absolute", top: 8, left: 14, right: 14, borderRadius: 12, padding: 12, borderLeftWidth: 4, zIndex: 20 },
 });
+
+/** System → Light → Dark, one icon button (owner's rule for every site and app). */
+export function ColorModeButton({ theme }: { theme: Theme }) {
+  const { mode, setMode } = useThemeMode();
+  const icon = mode === "system" ? "system" : mode === "light" ? "sun" : "moon";
+  const label = `Colour mode: ${mode === "system" ? "System" : mode === "light" ? "Light" : "Dark"}. Switch to ${NEXT_MODE[mode]}.`;
+  return <IconButton icon={icon} label={label} theme={theme} onPress={() => setMode(NEXT_MODE[mode])} />;
+}

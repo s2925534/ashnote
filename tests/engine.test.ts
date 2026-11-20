@@ -247,3 +247,39 @@ test("pairing ends on both phones when the code expires before anyone accepts", 
   await flush();
   assert.equal(Object.keys(A.e.state.contacts).length + Object.keys(B.e.state.contacts).length, 0);
 });
+
+test("SOS goes to every chosen contact with the location and is never on a timer", async () => {
+  const relay = new FakeRelay();
+  const { A, B, a, b } = await pair(relay);
+  // a second contact for A
+  const C = phone(relay);
+  const inv = A.e.createInvite();
+  await C.e.scan(inv.code); await flush();
+  await A.e.acceptRequest(inv.invite.pub); await flush();
+  const c2 = Object.values(A.e.state.contacts).find((x) => x.id !== a.id)!;
+  const cc = Object.values(C.e.state.contacts)[0];
+  B.e.takeNotices(); C.e.takeNotices();
+  const loc = { lat: -27.4698, lon: 153.0251, acc: 12, at: clock };
+  assert.equal(await A.e.sendAlert([a.id, c2.id], "sos", loc), 2);
+  await flush();
+  for (const [P, id] of [[B, b.id], [C, cc.id]] as const) {
+    const m = P.e.state.contacts[id].messages.find((x) => x.alert)!;
+    assert.equal(m.alert!.level, "sos");
+    assert.deepEqual(m.alert!.loc, loc);
+    assert.ok(P.e.takeNotices().some((n) => n.type === "alert" && n.level === "sos"));
+    await P.e.markRead(id, m.id);
+    assert.equal(m.expiresAt, null, "alerts are kept until dismissed");
+  }
+  clock += 2 * 86_400_000;
+  B.e.tick();
+  assert.equal(B.e.state.contacts[b.id].messages.filter((x) => x.alert).length, 1);
+});
+
+test("Help without a location still arrives", async () => {
+  const { A, B, a, b } = await pair();
+  await A.e.sendAlert([a.id], "help", null);
+  await flush();
+  const m = B.e.state.contacts[b.id].messages[0];
+  assert.equal(m.alert!.level, "help");
+  assert.equal(m.alert!.loc, null);
+});

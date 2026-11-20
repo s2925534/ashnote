@@ -12,3 +12,11 @@ export function saveState(s: State) {
 export async function eraseAll() {
   memory = null;
 }
+
+const settings: Record<string, string> = {};
+export async function loadSetting(key: string): Promise<string | null> {
+  return settings[key] ?? null;
+}
+export async function saveSetting(key: string, value: string) {
+  settings[key] = value;
+}

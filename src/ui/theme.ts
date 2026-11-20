@@ -1,3 +1,4 @@
+import { createContext, useContext } from "react";
 import { useColorScheme } from "react-native";
 
 const light = {
@@ -36,7 +37,20 @@ const dark: typeof light = {
 };
 
 export type Theme = typeof light;
-export const useTheme = (): Theme => (useColorScheme() === "dark" ? dark : light);
+export type ThemeMode = "system" | "light" | "dark";
+export const NEXT_MODE: Record<ThemeMode, ThemeMode> = { system: "light", light: "dark", dark: "system" };
+
+/** The colour mode switch (owner's rule): System follows the phone, Light and Dark are remembered. */
+export const ThemeModeContext = createContext<{ mode: ThemeMode; setMode: (m: ThemeMode) => void }>({ mode: "system", setMode: () => {} });
+export const useThemeMode = () => useContext(ThemeModeContext);
+
+export function useTheme(): Theme {
+  const system = useColorScheme();
+  const { mode } = useThemeMode();
+  const resolved = mode === "system" ? system : mode;
+  return resolved === "dark" ? dark : light;
+}
+export const isDark = (t: Theme) => t === dark;
 
 export const font = {
   display: { fontWeight: "700" as const, letterSpacing: -0.3 },

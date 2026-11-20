@@ -14,8 +14,12 @@ export const RELAY_EXPIRY_MS = 7 * 86_400_000;
 export const PAIR_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TEXT = 2000;
 
+export type Location = { lat: number; lon: number; acc: number | null; at: number };
+export type Alert = { level: "sos" | "help"; loc: Location | null };
+
 export type Msg = {
   id: string;
+  alert?: Alert; // SOS or Help: kept until dismissed, never on a timer
   side: "mine" | "theirs";
   text: string;
   ttl: number; // sender's setting when sent (0 = Off)
@@ -65,7 +69,9 @@ export type Notice =
   | { type: "ttl-changed"; contactId: string; ttl: number }
   | { type: "invite-expired" }
   | { type: "pair-expired"; safety: string[] }
-  | { type: "screenshot"; contactId: string };
+  | { type: "screenshot"; contactId: string }
+  | { type: "alert"; contactId: string; msgId: string; level: "sos" | "help" }
+  | { type: "message"; contactId: string };
 
 export interface Transport {
   publish(event: NostrEvent): Promise<boolean>;
@@ -88,7 +94,8 @@ type Inner =
   | { t: "read"; id: string; eff: number }
   | { t: "del"; id: string }
   | { t: "ttl"; ttl: number }
-  | { t: "shot" };
+  | { t: "shot" }
+  | { t: "alert"; id: string; level: "sos" | "help"; loc: Location | null; text: string; at: number };
 
 export class Engine {
   state: State;
@@ -295,6 +302,7 @@ export class Engine {
         const text = String(inner.text).slice(0, MAX_TEXT);
         c.messages.push({ id: inner.id, side: "theirs", text, ttl: Number(inner.ttl) || 0, sentAt: inner.at, order: ++this.state.seq,
           status: "received", readAt: null, eff: null, expiresAt: null });
+        this.notify({ type: "message", contactId: c.id });
         return true;
       }
       case "read": {
@@ -314,6 +322,15 @@ export class Engine {
       }
       case "ttl": {
         this.notify({ type: "ttl-changed", contactId: c.id, ttl: Number(inner.ttl) || 0 });
+        return true;
+      }
+      case "alert": {
+        if (c.tombstones[inner.id] || c.messages.some((m) => m.id === inner.id)) return true;
+        const level = inner.level === "sos" ? "sos" : "help";
+        const loc = validLocation(inner.loc);
+        c.messages.push({ id: inner.id, side: "theirs", text: String(inner.text).slice(0, 300), ttl: 0, sentAt: inner.at,
+          order: ++this.state.seq, status: "received", readAt: null, eff: null, expiresAt: null, alert: { level, loc } });
+        this.notify({ type: "alert", contactId: c.id, msgId: inner.id, level });
         return true;
       }
       case "shot": {
@@ -355,7 +372,7 @@ export class Engine {
     const m = c?.messages.find((x) => x.id === msgId && x.side === "theirs");
     if (!c || !m || m.readAt != null) return;
     const now = this.deps.now();
-    const eff = effectiveTtl(m.ttl, c.ttl);
+    const eff = m.alert ? 0 : effectiveTtl(m.ttl, c.ttl);
     m.readAt = now;
     m.eff = eff;
     m.expiresAt = eff ? now + eff : null;
@@ -380,6 +397,29 @@ export class Engine {
     c.ttl = ttl;
     this.changed();
     await this.sendInner(c, { t: "ttl", ttl });
+  }
+
+  /**
+   * SOS (life-threatening) or Help (not life-threatening): goes straight to the given contacts with
+   * this phone's location if it could be found. Alerts are kept until someone dismisses them.
+   */
+  async sendAlert(contactIds: string[], level: "sos" | "help", loc: Location | null): Promise<number> {
+    const now = this.deps.now();
+    const text = level === "sos" ? "SOS: I need help now." : "I need some help. It's not an emergency.";
+    let sent = 0;
+    for (const id of contactIds) {
+      const c = this.state.contacts[id];
+      if (!c) continue;
+      const m: Msg = { id: rid(), side: "mine", text, ttl: 0, sentAt: now, order: ++this.state.seq, status: "sending",
+        readAt: null, eff: null, expiresAt: null, alert: { level, loc } };
+      c.messages.push(m);
+      this.changed();
+      const ok = await this.sendInner(c, { t: "alert", id: m.id, level, loc, text, at: now });
+      if (c.messages.includes(m) && m.status === "sending") m.status = ok ? "sent" : "sending";
+      sent++;
+    }
+    this.changed();
+    return sent;
   }
 
   /** Screenshots are blocked; on iPhone the attempt is also reported to the other person. */
@@ -438,6 +478,13 @@ export class Engine {
     if (dirty) { this.rewatch(); this.changed(); }
     return dirty;
   }
+}
+
+function validLocation(l: unknown): Location | null {
+  const x = l as Location | null;
+  if (!x || typeof x.lat !== "number" || typeof x.lon !== "number") return null;
+  if (Math.abs(x.lat) > 90 || Math.abs(x.lon) > 180) return null;
+  return { lat: x.lat, lon: x.lon, acc: typeof x.acc === "number" ? x.acc : null, at: Number(x.at) || 0 };
 }
 
 /** The shorter of the sender's and the reader's timers wins. 0 means Off (kept). */
