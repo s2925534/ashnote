@@ -13,6 +13,11 @@ export const MAX_UNREAD_MS = 7 * 86_400_000;
 export const RELAY_EXPIRY_MS = 7 * 86_400_000;
 export const PAIR_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TEXT = 2000;
+// base64 characters per relay event. Each piece is encrypted three times (ratchet, seal, gift wrap),
+// growing about 4/3 per layer plus padding, and NIP-44 and most relays cap a payload near 64 KB.
+export const IMAGE_CHUNK = 16_000;
+export const MAX_IMAGE_B64 = 640_000; // about 470 KB of JPEG (40 pieces at most)
+export const PARTIAL_TTL_MS = 60 * 60_000; // an image that never fully arrives is dropped after an hour
 
 export type Location = { lat: number; lon: number; acc: number | null; at: number };
 export type Alert = { level: "sos" | "help"; loc: Location | null; shared?: boolean };
@@ -20,6 +25,9 @@ export type Alert = { level: "sos" | "help"; loc: Location | null; shared?: bool
 export type Msg = {
   id: string;
   alert?: Alert; // SOS or Help: kept until dismissed, never on a timer
+  image?: { data: string; w: number; h: number }; // JPEG, base64; lives only in the encrypted store until deleted
+  queued?: boolean; // a received photo waiting behind the one on screen (not in the stack yet)
+  progress?: number; // sending a photo: 0..1
   side: "mine" | "theirs";
   text: string;
   ttl: number; // sender's setting when sent (0 = Off)
@@ -40,6 +48,7 @@ export type Contact = {
   ttl: number; // my setting for messages I send
   messages: Msg[];
   tombstones: Record<string, number>; // ids deleted before they arrived -> when
+  partials?: Record<string, { n: number; parts: (string | null)[]; w: number; h: number; ttl: number; at: number; first: number }>;
   pairedAt: number;
 };
 
@@ -95,6 +104,7 @@ type Inner =
   | { t: "del"; id: string }
   | { t: "ttl"; ttl: number }
   | { t: "shot" }
+  | { t: "img"; id: string; i: number; n: number; d: string; w: number; h: number; ttl: number; at: number }
   | { t: "alert"; id: string; level: "sos" | "help"; loc: Location | null; shared?: boolean; text: string; at: number };
 
 export class Engine {
@@ -315,6 +325,7 @@ export class Engine {
         return true;
       }
       case "del": {
+        if (c.partials?.[inner.id]) delete c.partials[inner.id];
         const i = c.messages.findIndex((x) => x.id === inner.id);
         if (i >= 0) c.messages.splice(i, 1);
         else c.tombstones[inner.id] = now;
@@ -331,6 +342,24 @@ export class Engine {
         c.messages.push({ id: inner.id, side: "theirs", text: String(inner.text).slice(0, 300), ttl: 0, sentAt: inner.at,
           order: ++this.state.seq, status: "received", readAt: null, eff: null, expiresAt: null, alert: { level, loc, shared: inner.shared !== false } });
         this.notify({ type: "alert", contactId: c.id, msgId: inner.id, level });
+        return true;
+      }
+      case "img": {
+        if (c.tombstones[inner.id] || c.messages.some((m) => m.id === inner.id)) return true;
+        const n = Math.floor(Number(inner.n)), i = Math.floor(Number(inner.i));
+        if (!(n > 0 && n <= Math.ceil(MAX_IMAGE_B64 / IMAGE_CHUNK) && i >= 0 && i < n) || typeof inner.d !== "string" || inner.d.length > IMAGE_CHUNK) return false;
+        c.partials ??= {};
+        const part = (c.partials[inner.id] ??= { n, parts: Array(n).fill(null), w: Number(inner.w) || 0, h: Number(inner.h) || 0,
+          ttl: Number(inner.ttl) || 0, at: Number(inner.at) || now, first: now });
+        if (part.n !== n) return false;
+        part.parts[i] = inner.d;
+        if (part.parts.some((x) => x == null)) return true;
+        delete c.partials[inner.id];
+        const showing = c.messages.some((m) => m.image && !m.queued);
+        c.messages.push({ id: inner.id, side: "theirs", text: "", ttl: part.ttl, sentAt: part.at, order: showing ? 0 : ++this.state.seq,
+          status: "received", readAt: null, eff: null, expiresAt: null, image: { data: part.parts.join(""), w: part.w, h: part.h },
+          queued: showing });
+        this.notify({ type: "message", contactId: c.id });
         return true;
       }
       case "shot": {
@@ -397,6 +426,58 @@ export class Engine {
     c.ttl = ttl;
     this.changed();
     await this.sendInner(c, { t: "ttl", ttl });
+  }
+
+  /**
+   * Sends one photo (JPEG, base64) in pieces through the relays. Each piece is its own
+   * ratchet message. On this phone the new photo replaces any earlier photo of ours on screen.
+   */
+  async sendImage(contactId: string, b64: string, w: number, h: number): Promise<Msg | null> {
+    const c = this.state.contacts[contactId];
+    if (!c || !b64 || b64.length > MAX_IMAGE_B64) return null;
+    const now = this.deps.now();
+    c.messages = c.messages.filter((m) => !(m.side === "mine" && m.image)); // one photo of ours on screen
+    const m: Msg = { id: rid(), side: "mine", text: "", ttl: c.ttl, sentAt: now, order: ++this.state.seq, status: "sending",
+      readAt: null, eff: null, expiresAt: null, image: { data: b64, w, h }, progress: 0 };
+    c.messages.push(m);
+    this.changed();
+    const n = Math.ceil(b64.length / IMAGE_CHUNK);
+    let ok = true;
+    for (let i = 0; i < n; i++) {
+      if (!c.messages.includes(m)) return m; // deleted while sending: stop
+      ok = (await this.sendInner(c, { t: "img", id: m.id, i, n, d: b64.slice(i * IMAGE_CHUNK, (i + 1) * IMAGE_CHUNK), w, h, ttl: c.ttl, at: now })) && ok;
+      m.progress = (i + 1) / n;
+      this.changed();
+    }
+    if (c.messages.includes(m) && m.status === "sending") m.status = ok ? "sent" : "sending";
+    delete m.progress;
+    this.changed();
+    return m;
+  }
+
+  /** Received photos waiting behind the one on screen. */
+  queuedImages(contactId: string): Msg[] {
+    const c = this.state.contacts[contactId];
+    return c ? c.messages.filter((m) => m.queued).sort((a, b) => a.sentAt - b.sentAt) : [];
+  }
+
+  /** "Show next photo": the photo on screen is deleted for both phones and the next one comes up. */
+  async showNextImage(contactId: string) {
+    const c = this.state.contacts[contactId];
+    if (!c || !this.queuedImages(contactId).length) return;
+    const current = c.messages.filter((m) => m.image && !m.queued && m.side === "theirs");
+    for (const m of current) await this.deleteNow(contactId, m.id);
+    this.promoteImage(c);
+    this.changed();
+  }
+
+  private promoteImage(c: Contact): boolean {
+    if (c.messages.some((m) => m.image && !m.queued && m.side === "theirs")) return false;
+    const next = c.messages.filter((m) => m.queued).sort((a, b) => a.sentAt - b.sentAt)[0];
+    if (!next) return false;
+    next.queued = false;
+    next.order = ++this.state.seq;
+    return true;
   }
 
   /**
@@ -473,6 +554,8 @@ export class Engine {
         return true;
       });
       if (c.messages.length !== before) dirty = true;
+      for (const [id, p] of Object.entries(c.partials ?? {})) if (now - p.first > PARTIAL_TTL_MS) { delete c.partials![id]; dirty = true; }
+      if (this.promoteImage(c)) dirty = true; // the photo on screen went: the next queued one comes up
       for (const [id, at] of Object.entries(c.tombstones)) if (now - at > RELAY_EXPIRY_MS + 86_400_000) { delete c.tombstones[id]; dirty = true; }
     }
     if (dirty) { this.rewatch(); this.changed(); }
@@ -495,9 +578,10 @@ export function effectiveTtl(senderTtl: number, readerTtl: number): number {
 }
 
 /** The stack shown on screen: the newest message is on top. */
-export function stackOf(c: Contact): { top: Msg | null; under: number; unreadUnder: number } {
-  const ms = [...c.messages].sort((a, b) => a.order - b.order);
+export function stackOf(c: Contact): { top: Msg | null; under: number; unreadUnder: number; queuedImages: number } {
+  const queuedImages = c.messages.filter((m) => m.queued).length;
+  const ms = c.messages.filter((m) => !m.queued).sort((a, b) => a.order - b.order);
   const top = ms[ms.length - 1] ?? null;
   const rest = ms.slice(0, -1);
-  return { top, under: rest.length, unreadUnder: rest.filter((m) => m.side === "theirs" && m.readAt == null).length };
+  return { top, under: rest.length, unreadUnder: rest.filter((m) => m.side === "theirs" && m.readAt == null).length, queuedImages };
 }

@@ -1,6 +1,6 @@
 // One message, filling the space above the message box.
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import type { Msg } from "../core/engine";
 import { describeLocation, openInMaps } from "../lib/maps";
@@ -121,9 +121,13 @@ export function MessageCard({ msg, from, now, theme, reduceMotion, enter, leave,
         >
           <Text style={[styles.from, { color: fg }]}>{mine ? "YOU" : from.toUpperCase()}</Text>
           {alert && <Text style={[styles.alertTitle, { color: fg }]}>{alert.level === "sos" ? "SOS" : "HELP"}</Text>}
-          <Text selectable={false} style={[styles.text, { color: fg, fontSize: fontSizeFor(msg.text.length), lineHeight: fontSizeFor(msg.text.length) * 1.3 }]}>
+          {msg.image && (
+            <Image accessibilityIgnoresInvertColors accessibilityLabel={`Photo from ${mine ? "you" : from}`}
+              source={{ uri: `data:image/jpeg;base64,${msg.image.data}` }} style={styles.photo} resizeMode="contain" />
+          )}
+          {!msg.image && <Text selectable={false} style={[styles.text, { color: fg, fontSize: fontSizeFor(msg.text.length), lineHeight: fontSizeFor(msg.text.length) * 1.3 }]}>
             {text}
-          </Text>
+          </Text>}
           {alert && (
             <View style={styles.locBox}>
               <Text style={[styles.locText, { color: fg }]}>{describeLocation(alert.loc, now, alert.shared !== false)}</Text>
@@ -163,7 +167,7 @@ export function metaLine(msg: Msg, now: number): string {
     return `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`;
   };
   if (msg.side === "mine") {
-    if (msg.status === "sending") return "Sending…";
+    if (msg.status === "sending") return msg.image && msg.progress != null ? `Sending photo · ${Math.round(msg.progress * 100)}%` : "Sending…";
     if (msg.status === "sent") return "Delivered to the relays, not read yet";
     if (msg.status === "read") return msg.expiresAt == null ? "Read · kept" : `Read · deletes in ${left(msg.expiresAt)}`;
     return "";
@@ -177,6 +181,7 @@ const styles = StyleSheet.create({
   card: { flex: 1, borderRadius: 26, paddingHorizontal: 22, paddingVertical: 36, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   from: { position: "absolute", top: 14, left: 18, fontSize: 11, fontWeight: "700", letterSpacing: 0.8, opacity: 0.75 },
   text: { textAlign: "center", fontWeight: "600" },
+  photo: { position: "absolute", top: 34, left: 10, right: 10, bottom: 10, borderRadius: 18 },
   alertTitle: { fontSize: 44, fontWeight: "900", letterSpacing: 4, marginBottom: 6 },
   locBox: { marginTop: 18, alignItems: "center", gap: 10 },
   locText: { fontSize: 12, opacity: 0.9, textAlign: "center" },

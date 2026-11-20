@@ -8,6 +8,7 @@ import { TTL_CHOICES, stackOf, type Msg } from "../core/engine";
 import { aliasFor } from "../core/identity";
 import { useEngine } from "../lib/engine";
 import { playSound } from "../lib/sounds";
+import { pickPhoto } from "../lib/photos";
 import { AlertButtons } from "../ui/AlertButtons";
 import { Avatar } from "../ui/Avatar";
 import { Dialog, IconButton, Pills, Toast, Button } from "../ui/kit";
@@ -24,6 +25,7 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
   const [text, setText] = useState("");
   const [sheet, setSheet] = useState(false);
   const [alertSheet, setAlertSheet] = useState(false);
+  const [photoSheet, setPhotoSheet] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; text: string; tone?: "info" | "warn" }[]>([]);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [shown, setShown] = useState<Shown | null>(null);
@@ -60,7 +62,7 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
     return () => sub.remove();
   }, [c, engine]);
 
-  const msgs = c ? [...c.messages].sort((a, b) => a.order - b.order) : [];
+  const msgs = c ? c.messages.filter((m) => !m.queued).sort((a, b) => a.order - b.order) : []; // queued photos wait off-screen
   const top = msgs[msgs.length - 1] ?? null;
   const topId = top?.id ?? null;
 
@@ -108,6 +110,14 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
   if (!c) return null;
   const s = stackOf(c);
   const current = shown ? c.messages.find((m) => m.id === shown.id) ?? shown.snapshot : null;
+  const sendPhoto = async (source: "camera" | "library") => {
+    setPhotoSheet(false);
+    const r = await pickPhoto(source);
+    if (!r) return;
+    if ("error" in r) { toast(r.error, "warn"); return; }
+    playSound("sent");
+    engine.sendImage(contactId, r.b64, r.w, r.h);
+  };
   const send = () => {
     const t = text.trim();
     if (!t) return;
@@ -157,9 +167,19 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
           )}
         </View>
         <Text style={[styles.meta, { color: theme.muted }]}>{current ? metaLine(current, now) : " "}</Text>
+        {s.queuedImages > 0 && (
+          <View style={[styles.queue, { borderColor: theme.line, backgroundColor: theme.panel }]}>
+            <Text style={{ color: theme.ink, flex: 1, fontSize: 13 }}>
+              {s.queuedImages === 1 ? "1 photo waiting" : `${s.queuedImages} photos waiting`}
+              <Text style={{ color: theme.muted }}> · the photo on screen is deleted for both of you</Text>
+            </Text>
+            <Button label="Show next photo" primary theme={theme} onPress={() => { leaveNext.current = "burst"; engine.showNextImage(contactId); }} />
+          </View>
+        )}
       </View>
 
       <View style={[styles.composer, { borderColor: theme.line }]}>
+        <IconButton icon="image" label="Send a photo" theme={theme} onPress={() => setPhotoSheet(true)} />
         <TextInput value={text} onChangeText={setText} placeholder="Message" placeholderTextColor={theme.muted} onSubmitEditing={send}
           returnKeyType="send" maxLength={2000} accessibilityLabel="Message"
           style={[styles.input, { color: theme.ink, borderColor: theme.line, backgroundColor: theme.panel }]} />
@@ -169,6 +189,15 @@ export function Chat({ theme, contactId, onBack }: { theme: Theme; contactId: st
       {toasts.map((t) => (
         <Toast key={t.id} text={t.text} tone={t.tone} theme={theme} onDone={() => setToasts((x) => x.filter((y) => y.id !== t.id))} />
       ))}
+
+      <Dialog visible={photoSheet} onClose={() => setPhotoSheet(false)} theme={theme} title="Send a photo">
+        <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20 }}>
+          One photo at a time. It's deleted just like a message ({c.ttl ? `${TTL_LABELS[c.ttl]} after it's seen` : "when someone deletes it"}), and hidden photo data such as location is removed before sending.
+        </Text>
+        <Button label="Take a photo" primary theme={theme} onPress={() => sendPhoto("camera")} />
+        <Button label="Choose a photo" theme={theme} onPress={() => sendPhoto("library")} />
+        <Button label="Cancel" theme={theme} onPress={() => setPhotoSheet(false)} />
+      </Dialog>
 
       <Dialog visible={alertSheet} onClose={() => setAlertSheet(false)} theme={theme} title={`Alert ${aliasFor(c.theirPub)}`}>
         <AlertButtons theme={theme} contactIds={[c.id]} scope={aliasFor(c.theirPub)}
@@ -199,6 +228,7 @@ const styles = StyleSheet.create({
   cardArea: { flex: 1 },
   emptyStage: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   meta: { fontSize: 11, textAlign: "center", paddingVertical: 7, fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }) },
+  queue: { flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderRadius: 14, padding: 10, marginBottom: 6 },
   composer: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderTopWidth: StyleSheet.hairlineWidth },
   input: { flex: 1, borderWidth: 1, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15 },
 });
