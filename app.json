@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "Ashnote",
+    "slug": "ashnote",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.velosolabs.ashnote",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Ashnote uses the camera only to scan invite codes."
+      }
+    },
+    "android": {
+      "package": "com.velosolabs.ashnote",
+      "versionCode": 1,
+      "allowBackup": false,
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1020",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Ashnote uses the camera only to scan invite codes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B1020"
+        }
+      ]
+    ],
+    "scheme": "ashnote",
+    "description": "Private chat with no accounts and no server: single-use QR pairing, aliases made from keys, messages that delete themselves after reading."
+  }
+}

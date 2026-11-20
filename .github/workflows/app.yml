@@ -1,0 +1,108 @@
+name: app
+
+# Tests and the type check run on every push and PR. A manual run, or a tag vX.Y.Z,
+# also builds the Android APK and AAB, attaches them to a private GitHub Release and,
+# when the hub token is set, publishes the APK to velosolabs.com/ashnote/download.
+# Built files are never committed.
+#
+# Secrets: ASHNOTE_KEYSTORE_BASE64, ASHNOTE_KEYSTORE_PASSWORD, ASHNOTE_KEY_ALIAS,
+# ASHNOTE_KEY_PASSWORD (upload key; without them the build is debug-signed and marked as a
+# test build), HUB_ADMIN_TOKEN (velosolabs.com admin API token, for the public APK).
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  android:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install
+      - name: Signing config
+        id: sign
+        env:
+          KS: ${{ secrets.ASHNOTE_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ASHNOTE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ASHNOTE_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ASHNOTE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > android/app/release.keystore
+            {
+              echo "ASHNOTE_STORE_FILE=release.keystore"
+              echo "ASHNOTE_STORE_PASSWORD=$KS_PASS"
+              echo "ASHNOTE_KEY_ALIAS=$KEY_ALIAS"
+              echo "ASHNOTE_KEY_PASSWORD=$KEY_PASS"
+            } >> android/gradle.properties
+            node scripts/android-signing.js
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build APK and AAB
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease bundleRelease
+      - name: Collect files
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/ashnote-$VERSION.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "dist/ashnote-$VERSION.aab"
+          (cd dist && sha256sum * > SHA256SUMS)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ashnote-android
+          path: dist/
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$VERSION"
+          NOTES="Ashnote $VERSION for Android."
+          if [ "${{ steps.sign.outputs.signed }}" != "true" ]; then
+            TAG="v$VERSION-test-${GITHUB_RUN_NUMBER}"
+            NOTES="Test build (debug-signed, not for the stores or the public download)."
+          fi
+          gh release create "$TAG" dist/* --title "Ashnote $TAG" --notes "$NOTES" \
+            $([ "${{ steps.sign.outputs.signed }}" != "true" ] && echo --prerelease) || \
+          gh release upload "$TAG" dist/* --clobber
+      - name: Publish the APK on velosolabs.com
+        if: steps.sign.outputs.signed == 'true'
+        env:
+          TOKEN: ${{ secrets.HUB_ADMIN_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then echo "HUB_ADMIN_TOKEN not set: skipping the public download"; exit 0; fi
+          curl -fsS -X POST "https://velosolabs.com/api/v1/admin/ashnote/upload" \
+            -H "Authorization: Bearer $TOKEN" \
+            --form-string "version=$VERSION" -F "file=@dist/ashnote-$VERSION.apk"
