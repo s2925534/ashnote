@@ -15,7 +15,7 @@ export const PAIR_TIMEOUT_MS = 15 * 60_000;
 export const MAX_TEXT = 2000;
 
 export type Location = { lat: number; lon: number; acc: number | null; at: number };
-export type Alert = { level: "sos" | "help"; loc: Location | null };
+export type Alert = { level: "sos" | "help"; loc: Location | null; shared?: boolean };
 
 export type Msg = {
   id: string;
@@ -95,7 +95,7 @@ type Inner =
   | { t: "del"; id: string }
   | { t: "ttl"; ttl: number }
   | { t: "shot" }
-  | { t: "alert"; id: string; level: "sos" | "help"; loc: Location | null; text: string; at: number };
+  | { t: "alert"; id: string; level: "sos" | "help"; loc: Location | null; shared?: boolean; text: string; at: number };
 
 export class Engine {
   state: State;
@@ -329,7 +329,7 @@ export class Engine {
         const level = inner.level === "sos" ? "sos" : "help";
         const loc = validLocation(inner.loc);
         c.messages.push({ id: inner.id, side: "theirs", text: String(inner.text).slice(0, 300), ttl: 0, sentAt: inner.at,
-          order: ++this.state.seq, status: "received", readAt: null, eff: null, expiresAt: null, alert: { level, loc } });
+          order: ++this.state.seq, status: "received", readAt: null, eff: null, expiresAt: null, alert: { level, loc, shared: inner.shared !== false } });
         this.notify({ type: "alert", contactId: c.id, msgId: inner.id, level });
         return true;
       }
@@ -403,7 +403,7 @@ export class Engine {
    * SOS (life-threatening) or Help (not life-threatening): goes straight to the given contacts with
    * this phone's location if it could be found. Alerts are kept until someone dismisses them.
    */
-  async sendAlert(contactIds: string[], level: "sos" | "help", loc: Location | null): Promise<number> {
+  async sendAlert(contactIds: string[], level: "sos" | "help", loc: Location | null, shared = true): Promise<number> {
     const now = this.deps.now();
     const text = level === "sos" ? "SOS: I need help now." : "I need some help. It's not an emergency.";
     let sent = 0;
@@ -411,10 +411,10 @@ export class Engine {
       const c = this.state.contacts[id];
       if (!c) continue;
       const m: Msg = { id: rid(), side: "mine", text, ttl: 0, sentAt: now, order: ++this.state.seq, status: "sending",
-        readAt: null, eff: null, expiresAt: null, alert: { level, loc } };
+        readAt: null, eff: null, expiresAt: null, alert: { level, loc, shared } };
       c.messages.push(m);
       this.changed();
-      const ok = await this.sendInner(c, { t: "alert", id: m.id, level, loc, text, at: now });
+      const ok = await this.sendInner(c, { t: "alert", id: m.id, level, loc, shared, text, at: now });
       if (c.messages.includes(m) && m.status === "sending") m.status = ok ? "sent" : "sending";
       sent++;
     }

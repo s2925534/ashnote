@@ -5,10 +5,28 @@ import type { Location as Loc } from "../core/engine";
 const withTimeout = <T,>(p: Promise<T>, ms: number) =>
   Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
 
-/** Best location within about 6 seconds: a fresh fix, else the last known one, else null. */
+/** Whether location is already allowed, so SOS can send it without asking anything. */
+export async function locationStatus(): Promise<"granted" | "denied" | "undetermined"> {
+  try {
+    const p = await Location.getForegroundPermissionsAsync();
+    return p.status === "granted" ? "granted" : p.canAskAgain ? "undetermined" : "denied";
+  } catch {
+    return "denied";
+  }
+}
+
+export async function allowLocation(): Promise<boolean> {
+  try {
+    return (await Location.requestForegroundPermissionsAsync()).status === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/** Best location within about 6 seconds: a fresh fix, else the last known one, else null. Never prompts. */
 export async function currentLocation(): Promise<Loc | null> {
   try {
-    const perm = await Location.requestForegroundPermissionsAsync();
+    const perm = await Location.getForegroundPermissionsAsync();
     if (perm.status !== "granted") return null;
     const fresh = await withTimeout(Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }), 6000);
     const pos = fresh ?? (await Location.getLastKnownPositionAsync());

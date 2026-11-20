@@ -8,8 +8,8 @@ export function openInMaps(loc: Location) {
   Linking.openURL(url).catch(() => Linking.openURL(`https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.lon}#map=17/${q}`));
 }
 
-export function describeLocation(loc: Location | null, now: number): string {
-  if (!loc) return "Location unavailable";
+export function describeLocation(loc: Location | null, now: number, shared = true): string {
+  if (!loc) return shared ? "Location unavailable" : "Location not shared";
   const mins = Math.max(0, Math.round((now - loc.at) / 60000));
   const age = mins < 1 ? "just now" : mins < 60 ? `${mins} min ago` : `${Math.round(mins / 60)} h ago`;
   return `${loc.lat.toFixed(5)}, ${loc.lon.toFixed(5)}${loc.acc != null ? ` · within ${Math.round(loc.acc)} m` : ""} · ${age}`;

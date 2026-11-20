@@ -126,7 +126,7 @@ export function MessageCard({ msg, from, now, theme, reduceMotion, enter, leave,
           </Text>
           {alert && (
             <View style={styles.locBox}>
-              <Text style={[styles.locText, { color: fg }]}>{describeLocation(alert.loc, now)}</Text>
+              <Text style={[styles.locText, { color: fg }]}>{describeLocation(alert.loc, now, alert.shared !== false)}</Text>
               {alert.loc && (
                 <Pressable accessibilityRole="button" accessibilityLabel="Open the location in maps" onPress={() => alert.loc && openInMaps(alert.loc)}
                   style={[styles.mapBtn, { borderColor: fg }]}>

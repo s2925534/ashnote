@@ -1,10 +1,11 @@
 // SOS and Help buttons. Hold for one second to send, so a pocket tap never sends one by
 // accident; letting go early cancels. The location is looked up and sent with the alert.
 import * as Haptics from "expo-haptics";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import { useEngine } from "../lib/engine";
-import { currentLocation } from "../lib/location";
+import { allowLocation, currentLocation, locationStatus } from "../lib/location";
+import { Button, Dialog } from "./kit";
 import type { Theme } from "./theme";
 
 const HOLD_MS = 1000;
@@ -41,14 +42,24 @@ export function AlertButtons({ theme, contactIds, scope, onSent }: {
 }) {
   const { engine } = useEngine();
   const [busy, setBusy] = useState(false);
-  const fire = async (level: "sos" | "help") => {
+  const [askHelp, setAskHelp] = useState(false);
+  const [perm, setPerm] = useState<"granted" | "denied" | "undetermined" | null>(null);
+  useEffect(() => { locationStatus().then(setPerm); }, []);
+
+  // SOS sends the location straight away, by design. Help asks first.
+  const fire = (level: "sos" | "help") => {
     if (busy || !contactIds.length) return;
+    if (level === "help") { setAskHelp(true); return; }
+    send("sos", true);
+  };
+  const send = async (level: "sos" | "help", withLocation: boolean) => {
+    setAskHelp(false);
     setBusy(true);
     Haptics.notificationAsync(level === "sos" ? Haptics.NotificationFeedbackType.Error : Haptics.NotificationFeedbackType.Warning).catch(() => {});
-    const loc = await currentLocation();
-    const n = await engine.sendAlert(contactIds, level, loc);
+    const loc = withLocation ? await currentLocation() : null;
+    const n = await engine.sendAlert(contactIds, level, loc, withLocation);
     setBusy(false);
-    onSent?.(`${level === "sos" ? "SOS" : "Help request"} sent to ${n === 1 ? "1 contact" : `${n} contacts`}${loc ? " with your location" : ". Your location wasn't available"}.`);
+    onSent?.(`${level === "sos" ? "SOS" : "Help request"} sent to ${n === 1 ? "1 contact" : `${n} contacts`}${loc ? " with your location" : withLocation ? ". Your location wasn't available" : " without your location"}.`);
   };
   return (
     <View style={styles.wrap}>
@@ -57,8 +68,22 @@ export function AlertButtons({ theme, contactIds, scope, onSent }: {
         <HoldButton label="Help" sub="Not an emergency" color={theme.amber} disabled={busy || !contactIds.length} onFire={() => fire("help")} />
       </View>
       <Text style={[styles.note, { color: theme.muted }]}>
-        {busy ? "Finding your location and sending…" : `Hold to send your location to ${scope}. Ashnote doesn't contact emergency services: in danger, call your local emergency number (000 in Australia).`}
+        {busy ? "Sending…" : `Hold to alert ${scope}. SOS always includes your location; Help asks first. Ashnote doesn't contact emergency services: in danger, call your local emergency number (000 in Australia).`}
       </Text>
+      {perm === "undetermined" && (
+        <Button label="Allow location so SOS can include it" theme={theme} onPress={async () => { await allowLocation(); setPerm(await locationStatus()); }} />
+      )}
+      {perm === "denied" && (
+        <Text style={[styles.note, { color: theme.danger }]}>Location is off for Ashnote, so SOS will be sent without it. Turn it on in your phone's settings.</Text>
+      )}
+      <Dialog visible={askHelp} onClose={() => setAskHelp(false)} theme={theme} title="Share your location?">
+        <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20 }}>
+          Send your current location with this help request? It goes encrypted to {scope} only.
+        </Text>
+        <Button label="Share location" primary theme={theme} onPress={() => send("help", true)} />
+        <Button label="Send without location" theme={theme} onPress={() => send("help", false)} />
+        <Button label="Cancel" theme={theme} onPress={() => setAskHelp(false)} />
+      </Dialog>
     </View>
   );
 }

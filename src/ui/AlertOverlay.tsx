@@ -21,7 +21,7 @@ export function AlertOverlay({ msg, from, now, onOpenChat, onClose }: {
         <Text style={styles.big}>{sos ? "SOS" : "HELP"}</Text>
         <Text style={styles.from}>from {from}</Text>
         <Text style={styles.text}>{msg.text}</Text>
-        <Text style={styles.loc}>{describeLocation(loc, now)}</Text>
+        <Text style={styles.loc}>{describeLocation(loc, now, msg.alert?.shared !== false)}</Text>
         {loc && (
           <Pressable accessibilityRole="button" onPress={() => openInMaps(loc)} style={[styles.btn, styles.primary]}>
             <Icon name="pin" color="#b3261e" size={20} />
