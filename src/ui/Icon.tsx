@@ -1,6 +1,6 @@
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
-export type IconName = "gear" | "send" | "trash" | "chat" | "qr" | "camera" | "back" | "close" | "alert" | "pin" | "system" | "sun" | "moon" | "play";
+export type IconName = "gear" | "send" | "trash" | "chat" | "qr" | "camera" | "back" | "close" | "alert" | "pin" | "system" | "sun" | "moon" | "play" | "image";
 
 export function Icon({ name, size = 20, color }: { name: IconName; size?: number; color: string }) {
   const p = { stroke: color, strokeWidth: 1.9, fill: "none", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -41,6 +41,13 @@ export function Icon({ name, size = 20, color }: { name: IconName; size?: number
         <>
           <Circle cx={12} cy={12} r={4} {...p} />
           <Path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" {...p} />
+        </>
+      )}
+      {name === "image" && (
+        <>
+          <Rect x={3} y={5} width={18} height={14} rx={2} {...p} />
+          <Circle cx={9} cy={10} r={1.8} {...p} />
+          <Path d="M21 16l-5-5-8 8" {...p} />
         </>
       )}
       {name === "play" && <Path d="M8 5.5v13l10.5-6.5L8 5.5z" {...p} />}

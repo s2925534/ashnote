@@ -283,3 +283,76 @@ test("Help without a location still arrives", async () => {
   assert.equal(m.alert!.level, "help");
   assert.equal(m.alert!.loc, null);
 });
+
+const fakeJpeg = (kb: number, seed = "A") => seed.repeat(Math.round(kb * 1365)); // base64-sized string
+
+test("a photo arrives in pieces, out of order, and is rebuilt exactly", async () => {
+  const relay = new FakeRelay();
+  const { A, B, a, b } = await pair(relay);
+  const img = fakeJpeg(100) + "xyz";
+  await A.e.sendImage(a.id, img, 1280, 960);
+  await flush();
+  const m = B.e.state.contacts[b.id].messages.find((x) => x.image)!;
+  assert.equal(m.image!.data, img);
+  assert.equal(m.image!.w, 1280);
+  assert.ok(relay.events.length > 4, "sent as several relay events");
+});
+
+test("one photo on screen: a second waits in the queue; Show next deletes the first on both phones", async () => {
+  const { A, B, a, b } = await pair();
+  await A.e.send(a.id, "a text message stays");
+  await A.e.sendImage(a.id, fakeJpeg(20, "B"), 100, 100);
+  await A.e.sendImage(a.id, fakeJpeg(20, "C"), 100, 100);
+  await flush();
+  const c = B.e.state.contacts[b.id];
+  const imgs = c.messages.filter((m) => m.image);
+  assert.equal(imgs.length, 2);
+  assert.equal(imgs.filter((m) => m.queued).length, 1, "the second photo waits");
+  assert.equal(stackOf(c).queuedImages, 1);
+  const first = imgs.find((m) => !m.queued)!;
+  await B.e.showNextImage(b.id);
+  await flush();
+  assert.ok(!c.messages.some((m) => m.id === first.id), "the first photo is gone");
+  assert.equal(c.messages.filter((m) => m.image && !m.queued).length, 1, "the next one is on screen");
+  assert.ok(c.messages.some((m) => m.text === "a text message stays"), "text messages are untouched");
+  assert.ok(!A.e.state.contacts[a.id].messages.some((m) => m.id === first.id), "deleted on the sender's phone too");
+});
+
+test("when the photo on screen times out, the next queued photo appears by itself", async () => {
+  const { A, B, a, b } = await pair();
+  await A.e.sendImage(a.id, fakeJpeg(10, "D"), 10, 10);
+  await A.e.sendImage(a.id, fakeJpeg(10, "E"), 10, 10);
+  await flush();
+  const c = B.e.state.contacts[b.id];
+  const shown = c.messages.find((m) => m.image && !m.queued)!;
+  await B.e.markRead(b.id, shown.id);
+  clock += 5 * 60_000 + 1000;
+  B.e.tick();
+  assert.ok(!c.messages.some((m) => m.id === shown.id), "the first photo is deleted");
+  const next = c.messages.find((m) => m.image)!;
+  assert.equal(next.queued, false, "the next photo comes up");
+  assert.equal(next.expiresAt, null, "its timer starts only once it is read");
+});
+
+test("deleting a photo while it is still arriving leaves nothing behind", async () => {
+  const relay = new FakeRelay();
+  const { A, B, a, b } = await pair(relay);
+  B.t.close();
+  const m = await A.e.sendImage(a.id, fakeJpeg(80, "F"), 10, 10);
+  await A.e.deleteNow(a.id, m!.id);
+  B.t.open();
+  await flush(); await flush();
+  const c = B.e.state.contacts[b.id];
+  assert.equal(c.messages.length, 0);
+  assert.equal(Object.keys(c.partials ?? {}).length, 0);
+});
+
+test("every photo piece stays under the relay size limit", async () => {
+  const relay = new FakeRelay();
+  const { A, a } = await pair(relay);
+  const before = relay.events.length;
+  await A.e.sendImage(a.id, fakeJpeg(460, "Z"), 10, 10);
+  const sizes = relay.events.slice(before).map((e) => JSON.stringify(e).length);
+  assert.ok(sizes.length > 1);
+  assert.ok(Math.max(...sizes) < 65_000, `largest event ${Math.max(...sizes)} bytes`);
+});
