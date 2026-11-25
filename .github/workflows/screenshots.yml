@@ -19,6 +19,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Remove screenshot branches from earlier runs
+        run: |
+          for b in $(git ls-remote --heads origin 'shots/*' | awk '{print $2}' | sed 's#refs/heads/##'); do
+            git push -q origin --delete "$b" && echo "deleted $b"
+          done
       - uses: actions/setup-node@v4
         with:
           node-version: 22
