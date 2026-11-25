@@ -1,0 +1,20 @@
+appId: com.velosolabs.ashnote
+---
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp:
+          stopApp: true
+      - extendedWaitUntil:
+          visible: "Show invite code"
+          timeout: 45000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: shots/android-home-empty
+- tapOn: "Show invite code"
+- extendedWaitUntil:
+    visible: "Invite code"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-invite

@@ -22,6 +22,8 @@ let done = 0;
 const contact = () => Object.keys(engine.state.contacts)[0];
 async function run(line: string) {
   const [cmd, ...rest] = line.trim().split(" ");
+  // wait (up to 30 s) for the pairing to finish before messaging
+  for (let i = 0; cmd !== "scan" && !contact() && i < 100; i++) await new Promise((r) => setTimeout(r, 300));
   const arg = rest.join(" ");
   if (cmd === "scan") console.log("SCAN", JSON.stringify(await engine.scan(arg)));
   if (cmd === "msg" && contact()) console.log("SENT", !!(await engine.send(contact(), arg, { keepCopy: true })));

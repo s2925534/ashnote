@@ -1,0 +1,32 @@
+appId: com.velosolabs.ashnote
+---
+- extendedWaitUntil:
+    visible: "Close"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: shots/android-sos
+- tapOn: "Close"
+- tapOn: "Back to contacts"
+- extendedWaitUntil:
+    visible: "Show invite code"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: shots/android-contacts
+- tapOn: "Settings"
+- extendedWaitUntil:
+    visible: "Sounds"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-settings
+- tapOn: "Back"
+- tapOn: "Colour mode: System.*"
+- tapOn: "Colour mode: Light.*"
+- extendedWaitUntil:
+    visible: "Colour mode: Dark.*"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: shots/android-contacts-dark
