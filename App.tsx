@@ -113,6 +113,9 @@ function Root() {
   const theme = useTheme();
   useEffect(() => {
     if (Platform.OS === "web") return;
+    // Documentation screenshots only: CI's screenshot build (.github/workflows/screenshots.yml) sets this
+    // at build time so the emulator can capture the screens. Release builds never set it.
+    if (process.env.EXPO_PUBLIC_SCREENSHOT_MODE === "1") return;
     // Screen capture is disabled on both platforms (owner's rule): screenshots and screen recordings
     // come out blank on Android (FLAG_SECURE) and iPhone (iOS 13+). iPhone also blurs the app switcher.
     ScreenCapture.preventScreenCaptureAsync("ashnote").catch(() => {});

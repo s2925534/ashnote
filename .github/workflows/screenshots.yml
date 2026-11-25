@@ -1,0 +1,66 @@
+name: screenshots
+
+# Documentation screenshots of the real Android app (VLABS-409). Manual only.
+# Builds a screenshot-only APK (EXPO_PUBLIC_SCREENSHOT_MODE=1 lets the emulator capture the
+# screens, which release builds block; it is debug-signed and never published), runs it on an
+# emulator against a local relay with a scripted second phone (scripts/shots/peer.ts), and
+# pushes the PNGs to a short-lived branch "shots/<run id>" for the docs to pick up.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - run: npx expo prebuild --platform android --no-install
+      - name: Build the screenshot APK (x86_64, debug-signed)
+        working-directory: android
+        env:
+          EXPO_PUBLIC_SCREENSHOT_MODE: "1"
+          EXPO_PUBLIC_RELAYS: ws://localhost:7777
+        run: ./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=x86_64
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Take the screenshots on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/shots/run.sh shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ashnote-screenshots
+          path: shots/
+      - name: Push the screenshots to a branch
+        run: |
+          git config user.name "Pedro Veloso"
+          git config user.email "pedro@veloso.dev"
+          git checkout --orphan "shots/${GITHUB_RUN_ID}"
+          git rm -rq --cached .
+          git add -f shots/*.png
+          git commit -qm "Android screenshots from run ${GITHUB_RUN_ID}"
+          git push -q origin "shots/${GITHUB_RUN_ID}"
+          echo "Pushed shots/${GITHUB_RUN_ID}"

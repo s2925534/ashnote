@@ -17,7 +17,12 @@ const mmss = (ms: number) => {
 export function InviteScreen({ theme, onCancel }: { theme: Theme; onCancel: () => void }) {
   const { engine, now } = useEngine();
   const [inv, setInv] = useState<ReturnType<typeof engine.createInvite> | null>(null);
-  useEffect(() => { setInv(engine.createInvite()); }, [engine]);
+  useEffect(() => {
+    const created = engine.createInvite();
+    setInv(created);
+    // Screenshot build only: the scripted second phone reads the code from the device log.
+    if (process.env.EXPO_PUBLIC_SCREENSHOT_MODE === "1") console.log(`ASHNOTE_INVITE ${created.code}`);
+  }, [engine]);
   if (!inv) return <View style={styles.pane} />;
   const left = inv.invite.expiresAt - now;
   return (
