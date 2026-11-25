@@ -52,18 +52,9 @@ jobs:
         id: sign
         env:
           KS: ${{ secrets.ASHNOTE_KEYSTORE_BASE64 }}
-          KS_PASS: ${{ secrets.ASHNOTE_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ASHNOTE_KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.ASHNOTE_KEY_PASSWORD }}
         run: |
           if [ -n "$KS" ]; then
             echo "$KS" | base64 -d > android/app/release.keystore
-            {
-              echo "ASHNOTE_STORE_FILE=release.keystore"
-              echo "ASHNOTE_STORE_PASSWORD=$KS_PASS"
-              echo "ASHNOTE_KEY_ALIAS=$KEY_ALIAS"
-              echo "ASHNOTE_KEY_PASSWORD=$KEY_PASS"
-            } >> android/gradle.properties
             node scripts/android-signing.js
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
@@ -71,6 +62,12 @@ jobs:
           fi
       - name: Build APK and AAB
         working-directory: android
+        env:
+          # read by the signing config written by scripts/android-signing.js (unused when unsigned)
+          ASHNOTE_STORE_FILE: release.keystore
+          ASHNOTE_STORE_PASSWORD: ${{ secrets.ASHNOTE_KEYSTORE_PASSWORD }}
+          ASHNOTE_KEY_ALIAS: ${{ secrets.ASHNOTE_KEY_ALIAS }}
+          ASHNOTE_KEY_PASSWORD: ${{ secrets.ASHNOTE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleRelease bundleRelease
       - name: Collect files
         run: |
