@@ -68,12 +68,20 @@ jobs:
           ASHNOTE_STORE_PASSWORD: ${{ secrets.ASHNOTE_KEYSTORE_PASSWORD }}
           ASHNOTE_KEY_ALIAS: ${{ secrets.ASHNOTE_KEY_ALIAS }}
           ASHNOTE_KEY_PASSWORD: ${{ secrets.ASHNOTE_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleRelease bundleRelease
+        # The APK people download is built for phone processors only (32- and 64-bit ARM), which
+        # keeps it under the 100 MB upload limit in front of velosolabs.com; the x86 builds only run
+        # on emulators. The AAB keeps every processor type: Google Play splits it per device.
+        run: |
+          ./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
+          ./gradlew --no-daemon bundleRelease
       - name: Collect files
         run: |
           VERSION=$(node -p "require('./app.json').expo.version")
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/ashnote-$VERSION.apk"
+          SIZE=$(stat -c %s "dist/ashnote-$VERSION.apk")
+          echo "APK size: $SIZE bytes"
+          if [ "$SIZE" -gt 99000000 ]; then echo "::error::The APK is over the 100 MB upload limit for velosolabs.com"; exit 1; fi
           cp android/app/build/outputs/bundle/release/app-release.aab "dist/ashnote-$VERSION.aab"
           (cd dist && sha256sum * > SHA256SUMS)
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
