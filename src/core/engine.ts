@@ -1,7 +1,7 @@
 // The Ashnote engine: pairing, messages, read receipts, timers and deletes.
 // Pure TypeScript with no React Native imports, so it runs (and is tested) under Node.
 import { safetyCode } from "./identity";
-import { createInvite, decodeInvite, encodeInvite, type Invite } from "./invite";
+import { createInvite, decodeInvite, encodeInvite, type Invite, INVITE_LIFETIMES_MS, INVITE_LIFETIME_MS } from "./invite";
 import { initRatchet, ratchetDecrypt, ratchetEncrypt, type RatchetState } from "./ratchet";
 import { newKeyPair, unwrap, wrap } from "./wrap";
 import type { NostrEvent } from "nostr-tools/pure";
@@ -178,6 +178,16 @@ export class Engine {
     this.rewatch();
     this.changed();
     return { invite: inv, code: encodeInvite(inv) };
+  }
+
+  /** Sets how long a pending invite lasts (10 min, 1 h or 24 h from when it was made) and returns its new code. */
+  setInviteLifetime(pub: string, lifetimeMs: number): string | null {
+    const inv = this.state.invites[pub];
+    if (!inv || inv.status !== "pending" || !(INVITE_LIFETIMES_MS as readonly number[]).includes(lifetimeMs)) return null;
+    const created = inv.createdAt ?? inv.expiresAt - INVITE_LIFETIME_MS;
+    inv.expiresAt = created + lifetimeMs;
+    this.changed();
+    return encodeInvite(inv);
   }
 
   cancelInvite(pub: string) {

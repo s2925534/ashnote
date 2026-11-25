@@ -1,12 +1,13 @@
 import { StatusBar } from "expo-status-bar";
 import * as ScreenCapture from "expo-screen-capture";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { EngineProvider, useEngine } from "./src/lib/engine";
 import { Chat } from "./src/screens/Chat";
 import { Home } from "./src/screens/Home";
-import { InviteScreen, ScanScreen, VerifyScreen, type PairOutcome } from "./src/screens/Pairing";
+import { InviteScreen, ScanScreen, VerifyScreen, sharedInvites, type PairOutcome } from "./src/screens/Pairing";
+import { extractInviteCode } from "./src/core/invite";
 import { aliasFor } from "./src/core/identity";
 import { AlertOverlay } from "./src/ui/AlertOverlay";
 import { Toast } from "./src/ui/kit";
@@ -20,7 +21,7 @@ type Route =
   | { name: "home" }
   | { name: "invite" }
   | { name: "scan" }
-  | { name: "verify"; role: "host" | "guest"; safety: string[]; invitePub?: string; expiresAt: number; outcome: PairOutcome; contactId?: string }
+  | { name: "verify"; role: "host" | "guest"; safety: string[]; invitePub?: string; expiresAt: number; outcome: PairOutcome; contactId?: string; remote?: boolean }
   | { name: "chat"; id: string }
   | { name: "settings" };
 
@@ -41,7 +42,7 @@ function Screens({ theme }: { theme: Theme }) {
       if (n.type === "pair-expired" || n.type === "invite-expired") playSound("expired");
       if (n.type === "alert") playSound(n.level === "sos" ? "sos" : "help");
       if (n.type === "pair-request" && route.name === "invite") {
-        setRoute({ name: "verify", role: "host", safety: n.safety, invitePub: n.invitePub, expiresAt: n.expiresAt, outcome: "pending" }); handled = true;
+        setRoute({ name: "verify", role: "host", safety: n.safety, invitePub: n.invitePub, expiresAt: n.expiresAt, outcome: "pending", remote: sharedInvites.has(n.invitePub) }); handled = true;
       }
       if (n.type === "paired") {
         // let the symbols leave on a high note, then open the chat
@@ -60,6 +61,21 @@ function Screens({ theme }: { theme: Theme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notices]);
 
+  // Invite links (velosolabs.com/ashnote/i#ashnote:1:… or ashnote://pair/…) open straight into pairing.
+  useEffect(() => {
+    const open = async (url?: string | null) => {
+      const code = url ? extractInviteCode(url.includes("#") ? url.slice(url.indexOf("#") + 1) : url) : null;
+      if (!code) return;
+      const r = await engine.scan(code);
+      if (r.ok) setRoute({ name: "verify", role: "guest", safety: r.safety, expiresAt: r.expiresAt, outcome: "pending", remote: true });
+      else setToast(r.reason);
+    };
+    Linking.getInitialURL().then(open).catch(() => {});
+    const sub = Linking.addEventListener("url", (e) => { open(e.url); });
+    return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine]);
+
   const home = () => setRoute({ name: "home" });
   return (
     <View style={styles.fill}>
@@ -70,11 +86,11 @@ function Screens({ theme }: { theme: Theme }) {
       {route.name === "invite" && <InviteScreen theme={theme} onCancel={home} />}
       {route.name === "scan" && (
         <ScanScreen theme={theme} onCancel={home}
-          onScanned={(safety, expiresAt) => setRoute({ name: "verify", role: "guest", safety, expiresAt, outcome: "pending" })} />
+          onScanned={(safety, expiresAt, remote) => setRoute({ name: "verify", role: "guest", safety, expiresAt, outcome: "pending", remote })} />
       )}
       {route.name === "verify" && (
         <VerifyScreen theme={theme} role={route.role} safety={route.safety} invitePub={route.invitePub} expiresAt={route.expiresAt}
-          outcome={route.outcome} onDone={home}
+          outcome={route.outcome} remote={route.remote} onDone={home}
           onFinished={() => {
             if (route.outcome === "paired" && route.contactId) setRoute({ name: "chat", id: route.contactId });
             else { setRoute({ name: "home" }); setToast("The code expired before the pairing was accepted."); }

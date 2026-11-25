@@ -2,17 +2,23 @@
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useEffect, useRef, useState } from "react";
 import * as Haptics from "expo-haptics";
-import { AccessibilityInfo, Animated, Easing, Platform, StyleSheet, Text, TextInput, View } from "react-native";
+import { AccessibilityInfo, Animated, Easing, Platform, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useEngine } from "../lib/engine";
-import { Button } from "../ui/kit";
+import { Button, Pills } from "../ui/kit";
+import { INVITE_LIFETIMES_MS, extractInviteCode, inviteLink } from "../core/invite";
 import { Particles } from "../ui/Particles";
 import type { Theme } from "../ui/theme";
 
 const mmss = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
 };
+
+/** Invites this phone sent as a link: their symbol check happens on a call, not side by side. */
+export const sharedInvites = new Set<string>();
+const LIFETIME_LABELS = ["10 min", "1 hour", "24 hours"];
 
 export function InviteScreen({ theme, onCancel }: { theme: Theme; onCancel: () => void }) {
   const { engine, now } = useEngine();
@@ -23,13 +29,25 @@ export function InviteScreen({ theme, onCancel }: { theme: Theme; onCancel: () =
     // Screenshot build only: the scripted second phone reads the code from the device log.
     if (process.env.EXPO_PUBLIC_SCREENSHOT_MODE === "1") console.log(`ASHNOTE_INVITE ${created.code}`);
   }, [engine]);
+  const [life, setLife] = useState<number>(INVITE_LIFETIMES_MS[0]);
   if (!inv) return <View style={styles.pane} />;
   const left = inv.invite.expiresAt - now;
+  const changeLife = (ms: number) => {
+    const code = engine.setInviteLifetime(inv.invite.pub, ms);
+    if (code) { setLife(ms); setInv({ invite: { ...inv.invite, expiresAt: engine.state.invites[inv.invite.pub].expiresAt }, code }); }
+  };
+  const share = async () => {
+    const until = new Date(inv.invite.expiresAt).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+    try {
+      const r = await Share.share({ message: `Add me on Ashnote (works once, until ${until}): ${inviteLink(inv.code)}` });
+      if (r.action !== Share.dismissedAction) sharedInvites.add(inv.invite.pub);
+    } catch { /* share sheet closed */ }
+  };
   return (
-    <View style={styles.pane}>
+    <ScrollView contentContainerStyle={[styles.pane, { flexGrow: 1 }]}>
       <Text accessibilityRole="header" style={[styles.h, { color: theme.ink }]}>Invite code</Text>
       <View style={styles.qr} accessibilityLabel="Single-use invite code">
-        <QRCode value={inv.code} size={240} backgroundColor="#ffffff" color="#141824" ecl="M" />
+        <QRCode value={inv.code} size={220} backgroundColor="#ffffff" color="#141824" ecl="M" />
       </View>
       <Text style={[styles.count, { color: left < 60_000 ? theme.amber : theme.ink }]}>Expires in {mmss(left)}</Text>
       {Platform.OS === "web" && (
@@ -38,35 +56,42 @@ export function InviteScreen({ theme, onCancel }: { theme: Theme; onCancel: () =
       <Text style={[styles.p, { color: theme.muted }]}>
         Let the other person scan this with Ashnote. It holds a one-off key, not your identity, and works once.
       </Text>
+      <Text style={[styles.label, { color: theme.muted }]}>Not together? Send it as a link</Text>
+      <Pills label="Link lasts" theme={theme} value={life} onChange={changeLife}
+        options={INVITE_LIFETIMES_MS.map((v, i) => ({ label: LIFETIME_LABELS[i], value: v }))} />
+      <Button label="Share invite link" primary theme={theme} style={styles.wide} onPress={share} />
       <Button label="Cancel invite" theme={theme} style={styles.wide} onPress={() => { engine.cancelInvite(inv.invite.pub); onCancel(); }} />
-    </View>
+    </ScrollView>
   );
 }
 
-export function ScanScreen({ theme, onScanned, onCancel }: { theme: Theme; onScanned: (safety: string[], expiresAt: number) => void; onCancel: () => void }) {
+export function ScanScreen({ theme, onScanned, onCancel }: { theme: Theme; onScanned: (safety: string[], expiresAt: number, remote: boolean) => void; onCancel: () => void }) {
   const { engine } = useEngine();
   const [perm, request] = useCameraPermissions();
   const [error, setError] = useState<string | null>(null);
   const [manual, setManual] = useState("");
   const busy = useRef(false);
 
-  const tryCode = async (code: string) => {
+  const [pasting, setPasting] = useState(Platform.OS === "web");
+  const tryCode = async (text: string, remote: boolean) => {
     if (busy.current) return;
     busy.current = true;
-    const r = await engine.scan(code.trim());
-    if (r.ok) onScanned(r.safety, r.expiresAt);
+    const code = extractInviteCode(text) ?? text.trim();
+    const r = await engine.scan(code);
+    if (r.ok) onScanned(r.safety, r.expiresAt, remote);
     else { setError(r.reason); setTimeout(() => (busy.current = false), 1500); }
   };
 
-  if (Platform.OS === "web") {
+  if (pasting) {
     return (
       <View style={styles.pane}>
-        <Text style={[styles.h, { color: theme.ink }]}>Scan a code</Text>
-        <Text style={[styles.p, { color: theme.muted }]}>Preview build: paste the code text instead of scanning.</Text>
-        <TextInput value={manual} onChangeText={setManual} placeholder="ashnote:1:…" placeholderTextColor={theme.muted}
+        <Text style={[styles.h, { color: theme.ink }]}>Paste a code</Text>
+        <Text style={[styles.p, { color: theme.muted }]}>Paste the invite code or link someone sent you. Then call them to compare the 4 symbols.</Text>
+        <TextInput value={manual} onChangeText={setManual} placeholder="ashnote:1:… or the invite link" placeholderTextColor={theme.muted} accessibilityLabel="Invite code" autoCorrect={false} autoCapitalize="none" multiline
           style={[styles.input, { color: theme.ink, borderColor: theme.line, backgroundColor: theme.panel }]} />
         {error && <Text style={{ color: theme.danger }}>{error}</Text>}
-        <Button label="Use code" primary theme={theme} style={styles.wide} onPress={() => tryCode(manual)} />
+        <Button label="Use code" primary theme={theme} style={styles.wide} onPress={() => tryCode(manual, true)} />
+        {Platform.OS !== "web" && <Button label="Scan instead" theme={theme} style={styles.wide} onPress={() => { setError(null); setPasting(false); }} />}
         <Button label="Back" theme={theme} style={styles.wide} onPress={onCancel} />
       </View>
     );
@@ -78,6 +103,7 @@ export function ScanScreen({ theme, onScanned, onCancel }: { theme: Theme; onSca
         <Text style={[styles.h, { color: theme.ink }]}>Camera needed</Text>
         <Text style={[styles.p, { color: theme.muted }]}>Ashnote uses the camera only to scan invite codes. Nothing is recorded or sent.</Text>
         <Button label="Allow camera" primary theme={theme} style={styles.wide} onPress={request} />
+        <Button label="Paste a code" theme={theme} style={styles.wide} onPress={() => setPasting(true)} />
         <Button label="Back" theme={theme} style={styles.wide} onPress={onCancel} />
       </View>
     );
@@ -85,10 +111,11 @@ export function ScanScreen({ theme, onScanned, onCancel }: { theme: Theme; onSca
   return (
     <View style={styles.fill}>
       <CameraView style={styles.fill} facing="back" barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-        onBarcodeScanned={(e) => tryCode(e.data)} />
+        onBarcodeScanned={(e) => tryCode(e.data, false)} />
       <View style={styles.overlay} pointerEvents="box-none">
         <View style={[styles.frame, { borderColor: theme.accent }]} />
         <Text style={styles.overlayText}>{error ?? "Point the camera at the other phone's code."}</Text>
+        <Button label="Paste a code" theme={theme} style={styles.wide} onPress={() => { setError(null); setPasting(true); }} />
         <Button label="Cancel" theme={theme} style={styles.wide} onPress={onCancel} />
       </View>
     </View>
@@ -101,8 +128,8 @@ export type PairOutcome = "pending" | "paired" | "expired";
  * The 4 symbols show only while the invite code is valid. If nobody accepts in time, the code
  * is destroyed and the symbols explode; once paired they gather, glow and rise away.
  */
-export function VerifyScreen({ theme, role, safety, invitePub, expiresAt, outcome, onDone, onFinished }: {
-  theme: Theme; role: "host" | "guest"; safety: string[]; invitePub?: string; expiresAt: number;
+export function VerifyScreen({ theme, role, safety, invitePub, expiresAt, outcome, onDone, onFinished, remote = false }: {
+  theme: Theme; role: "host" | "guest"; safety: string[]; invitePub?: string; expiresAt: number; remote?: boolean;
   outcome: PairOutcome; onDone: () => void; onFinished: () => void;
 }) {
   const { engine, now } = useEngine();
@@ -171,7 +198,9 @@ export function VerifyScreen({ theme, role, safety, invitePub, expiresAt, outcom
       {outcome === "pending" && (
         <>
           <Text style={[styles.p, { color: theme.muted }]}>
-            You're next to each other: glance at the other phone. Both must show the same 4 symbols. If they don't, someone else scanned the code.
+            {remote
+              ? "Not together? Call them and read the 4 symbols out loud. Accept only if all 4 match: if they don't, someone else used the link."
+              : "You're next to each other: glance at the other phone. Both must show the same 4 symbols. If they don't, someone else scanned the code."}
           </Text>
           <Text style={[styles.count, { color: left < 60_000 ? theme.amber : theme.muted }]}>
             {role === "host" ? `Accept within ${mmss(left)}` : `Waiting for the other phone to accept · ${mmss(left)}`}
@@ -198,6 +227,7 @@ const styles = StyleSheet.create({
   p: { fontSize: 15, textAlign: "center", lineHeight: 22, maxWidth: 340 },
   qr: { padding: 14, backgroundColor: "#fff", borderRadius: 16 },
   count: { fontSize: 15, fontVariant: ["tabular-nums"] },
+  label: { fontSize: 13, fontWeight: "700", marginTop: 8 },
   wide: { alignSelf: "stretch", maxWidth: 340, width: "100%" },
   emoji: { fontSize: 42, marginHorizontal: 6 },
   symbolRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 18, paddingHorizontal: 10, minWidth: 260 },

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { NostrEvent } from "nostr-tools/pure";
 import { Engine, effectiveTtl, stackOf, type Transport } from "../src/core/engine";
 import { aliasFor, safetyCode } from "../src/core/identity";
-import { decodeInvite } from "../src/core/invite";
+import { decodeInvite, encodeInvite, extractInviteCode, inviteLink } from "../src/core/invite";
 import { initRatchet, ratchetDecrypt, ratchetEncrypt } from "../src/core/ratchet";
 import { newKeyPair, unwrap, wrap } from "../src/core/wrap";
 
@@ -373,4 +373,36 @@ test("replying clears the screen: no copy is kept on the sending phone", async (
   assert.ok(!onA.some((m) => m.text === "hello"), "the original is gone from the sender too");
   assert.ok(onA.some((m) => m.text === "hi back"), "the reply arrived");
   assert.ok(onA.some((m) => m.image), "the photo arrived");
+});
+
+test("shared invites: a link can last 24 hours, still works once, and pairs after a day's wait", async () => {
+  const relay = new FakeRelay();
+  const A = phone(relay), B = phone(relay);
+  const { invite } = A.e.createInvite();
+  assert.equal(A.e.setInviteLifetime(invite.pub, 5 * 60_000), null, "only the offered lifetimes");
+  const code = A.e.setInviteLifetime(invite.pub, 24 * 60 * 60_000)!;
+  assert.ok(code);
+  clock += 23 * 60 * 60_000; // read the email the next morning
+  A.e.tick();
+  assert.equal(A.e.state.invites[invite.pub].status, "pending");
+  const link = inviteLink(code);
+  assert.ok(link.startsWith("https://velosolabs.com/ashnote/i#ashnote:1:"));
+  assert.equal(extractInviteCode(link), code);
+  assert.equal(extractInviteCode("ashnote://pair/" + encodeURIComponent(code)), code);
+  assert.equal(extractInviteCode("Add me on Ashnote (works once): " + link), code);
+  assert.equal((await B.e.scan(extractInviteCode(link)!)).ok, true);
+  await flush();
+  await A.e.acceptRequest(invite.pub);
+  await flush();
+  assert.equal(Object.keys(B.e.state.contacts).length, 1, "paired through the link");
+  const C = phone(relay);
+  assert.equal((await C.e.scan(code)).ok, true, "a copy can still send a request...");
+  await flush();
+  assert.equal(Object.keys(A.e.state.requests).length, 0, "...but the used invite refuses it");
+});
+
+test("an invite claiming to last more than a day is refused", () => {
+  const forged = encodeInvite({ pub: "a".repeat(64), priv: null, secret: "b".repeat(32), relays: ["wss://relay.example"],
+    expiresAt: clock + 3 * 24 * 60 * 60_000, status: "pending" });
+  assert.equal(decodeInvite(forged, clock).ok, false);
 });
