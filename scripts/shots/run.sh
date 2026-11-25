@@ -17,7 +17,7 @@ for a in "-e command enter" "-e command clock -e hhmm 0945" "-e command battery 
   adb shell am broadcast -a com.android.systemui.demo $a > /dev/null || true
 done
 
-fail() { echo "FAILED: $1"; echo "--- peer.log"; cat peer.log; echo "--- relay.log"; tail -20 relay.log
+fail() { find scripts/shots/maestro -name 'android-*.png' -exec mv {} shots/ \; ; echo "FAILED: $1"; echo "--- peer.log"; cat peer.log; echo "--- relay.log"; tail -20 relay.log
          echo "--- app log"; adb logcat -d -s ReactNativeJS:* ReactNative:* | tail -60; exit 1; }
 flow() { maestro test "scripts/shots/maestro/$1.yaml" || fail "$1"; }
 
@@ -33,4 +33,6 @@ flow 3-chat
 echo "sos" >> peer-commands.txt
 flow 4-rest
 cat peer.log
+# Maestro saves takeScreenshot paths next to the flow file; gather them into ./shots
+find scripts/shots/maestro -name 'android-*.png' -exec mv {} shots/ \;
 ls -la shots
