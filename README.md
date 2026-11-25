@@ -11,6 +11,7 @@ Jira: VLABS-408 (epic).
 |---|---|
 | Single-use invite codes: one-off key + secret + 10-minute expiry; the key is deleted on first use | `src/core/invite.ts`, `Engine.onInviteEvent` |
 | Safety code (4 symbols) and aliases made from keys, never typed | `src/core/identity.ts` |
+| Pairing from a distance: Share invite link (10 min, 1 hour or 24 hours) or Paste a code; links open `velosolabs.com/ashnote/i#…` (the code stays after the #, never sent to the server) and go straight into the app (App Links, `ashnote://pair/…`); remote invites ask to compare the symbols on a call | `src/screens/Pairing.tsx`, `App.tsx`, `src/core/invite.ts`, `Engine.setInviteLifetime` |
 | A new key pair per contact | `Engine.scan`, `Engine.acceptRequest` |
 | Forward secrecy: a hash ratchet per direction, a new key per message | `src/core/ratchet.ts` |
 | Sender hidden from relays: rumor, seal, gift wrap with a throwaway key and an expiry tag | `src/core/wrap.ts` |
