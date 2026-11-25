@@ -1,0 +1,35 @@
+appId: com.velosolabs.ashnote
+---
+- extendedWaitUntil:
+    visible: "Show next photo"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: shots/android-photo-queue
+- tapOn: "Disappearing messages"
+- extendedWaitUntil:
+    visible: "Delete after reading"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-timer-setting
+- tapOn: "Done"
+- tapOn: "SOS or Help"
+- extendedWaitUntil:
+    visible: "Help: Not an emergency"
+    timeout: 20000
+- longPressOn: "Help: Not an emergency"
+- extendedWaitUntil:
+    visible: "Share location"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-help-ask
+- tapOn: "Share location"
+- extendedWaitUntil:
+    visible: "While using the app"
+    timeout: 30000
+- takeScreenshot: shots/android-location-prompt
+- tapOn: "While using the app"
+- waitForAnimationToEnd:
+    timeout: 4000

@@ -3,9 +3,11 @@
 //   scan <code>      pair with the invite code shown on the emulator
 //   msg <text>       send a message to the paired contact
 //   sos              send an SOS with a fixed demo location (Brisbane)
+//   photo <1|2>      send one of the test photos in scripts/shots
 // and prints every notice it gets, so the driver script can wait for "paired".
 // Usage: npx tsx scripts/shots/peer.ts <relay-url> <command-file>
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Engine, emptyState } from "../../src/core/engine";
 import { NostrTransport } from "../../src/lib/transport";
 
@@ -27,6 +29,10 @@ async function run(line: string) {
   const arg = rest.join(" ");
   if (cmd === "scan") console.log("SCAN", JSON.stringify(await engine.scan(arg)));
   if (cmd === "msg" && contact()) console.log("SENT", !!(await engine.send(contact(), arg, { keepCopy: true })));
+  if (cmd === "photo" && contact()) {
+    const b64 = readFileSync(join(__dirname, `photo${arg === "2" ? 2 : 1}.jpg`)).toString("base64");
+    console.log("PHOTO", !!(await engine.sendImage(contact(), b64, 720, 960, { keepCopy: true })));
+  }
   if (cmd === "sos" && contact()) {
     const loc = { lat: -27.4698, lon: 153.0251, acc: 12, at: Date.now() };
     console.log("SOS", await engine.sendAlert([contact()], "sos", loc, true));

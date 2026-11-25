@@ -14,7 +14,10 @@
         "NSCameraUsageDescription": "Ashnote uses the camera to scan invite codes and to take a photo you choose to send.",
         "NSLocationWhenInUseUsageDescription": "Ashnote reads your location only when you send an SOS or Help alert, and sends it encrypted to the contacts you alert.",
         "NSPhotoLibraryUsageDescription": "Ashnote opens your photos only so you can pick one to send."
-      }
+      },
+      "associatedDomains": [
+        "applinks:velosolabs.com"
+      ]
     },
     "android": {
       "package": "com.velosolabs.ashnote",
