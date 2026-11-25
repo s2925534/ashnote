@@ -55,11 +55,13 @@ jobs:
           name: ashnote-screenshots
           path: shots/
       - name: Push the screenshots to a branch
+        if: always()
         run: |
           git config user.name "Pedro Veloso"
           git config user.email "pedro@veloso.dev"
           git checkout --orphan "shots/${GITHUB_RUN_ID}"
           git rm -rq --cached .
+          ls shots/*.png >/dev/null 2>&1 || { echo "no screenshots"; exit 0; }
           git add -f shots/*.png
           git commit -qm "Android screenshots from run ${GITHUB_RUN_ID}"
           git push -q origin "shots/${GITHUB_RUN_ID}"

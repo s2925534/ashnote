@@ -41,8 +41,12 @@ def find(match, timeout=30, prefix=False):
                 if v == match or (prefix and v.startswith(match)):
                     return n
         time.sleep(0.7)
-    adb("exec-out", "screencap", "-p", check=False)
-    shot("zz-missing-" + re.sub(r"\W+", "-", match)[:30])
+    try:
+        seen = [(n.get("text") or n.get("content-desc")) for n in nodes()]
+        print("ON SCREEN:", [t for t in seen if t])
+    except Exception as e:  # noqa: BLE001
+        print("could not read the screen:", e)
+    shot("zz-missing-" + re.sub(r"\W+", "-", match)[:30], settle=0)
     raise RuntimeError(f"not on screen: {match!r}")
 
 
