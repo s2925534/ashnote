@@ -1,0 +1,16 @@
+appId: com.velosolabs.ashnote
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Show invite code"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: shots/android-home-empty
+- tapOn: "Show invite code"
+- extendedWaitUntil:
+    visible: "Invite code"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-invite

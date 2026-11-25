@@ -1,0 +1,12 @@
+appId: com.velosolabs.ashnote
+---
+- extendedWaitUntil:
+    visible: "They match, accept"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: shots/android-safety-code
+- tapOn: "They match, accept"
+- extendedWaitUntil:
+    visible: "Send a photo"
+    timeout: 60000

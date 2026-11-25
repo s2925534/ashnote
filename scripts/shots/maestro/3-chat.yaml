@@ -1,0 +1,8 @@
+appId: com.velosolabs.ashnote
+---
+- extendedWaitUntil:
+    visible: "Hi! Got your code.*"
+    timeout: 60000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: shots/android-chat

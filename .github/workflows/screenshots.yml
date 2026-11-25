@@ -2,7 +2,8 @@ name: screenshots
 
 # Documentation screenshots of the real Android app (VLABS-409). Manual only.
 # Builds a screenshot-only APK (EXPO_PUBLIC_SCREENSHOT_MODE=1 lets the emulator capture the
-# screens, which release builds block; it is debug-signed and never published), runs it on an
+# screens, which release builds block, and it may talk to the local relay over ws://; it is
+# debug-signed and never published), runs it on an
 # emulator against a local relay with a scripted second phone (scripts/shots/peer.ts), and
 # pushes the PNGs to a short-lived branch "shots/<run id>" for the docs to pick up.
 
@@ -28,6 +29,10 @@ jobs:
           java-version: 17
       - run: npm ci
       - run: npx expo prebuild --platform android --no-install
+      - name: Allow the local test relay (ws://localhost, screenshot build only)
+        run: sed -i 's/<application /<application android:usesCleartextTraffic="true" /' android/app/src/main/AndroidManifest.xml && grep -c usesCleartextTraffic android/app/src/main/AndroidManifest.xml
+      - name: Install Maestro
+        run: curl -fsSL "https://get.maestro.mobile.dev" | bash
       - name: Build the screenshot APK (x86_64, debug-signed)
         working-directory: android
         env:
