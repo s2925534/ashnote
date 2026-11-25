@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import Constants from "expo-constants";
+import { Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { DEFAULT_PREFS, SOUNDS, loadSoundPrefs, playSound, setSoundPref, type SoundPrefs } from "../lib/sounds";
 import { loadPrefs, setReplyClears } from "../lib/prefs";
-import { ColorModeButton, IconButton } from "../ui/kit";
+import { Button, ColorModeButton, IconButton } from "../ui/kit";
 import { useThemeMode, type Theme } from "../ui/theme";
 
 export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }) {
@@ -54,6 +55,16 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
               onValueChange={(v) => setSoundPref(s.key, v).then(setPrefs)} />
           </View>
         ))}
+
+        <Text style={[styles.h, { color: theme.ink }]}>Updates</Text>
+        <Text style={[styles.hint, { color: theme.muted }]}>
+          Version {Constants.expoConfig?.version ?? "?"}. New versions are on velosolabs.com/ashnote/download: install the new file over
+          this one and your contacts and settings stay.
+          {Platform.OS === "android"
+            ? " On Samsung phones, switch off Auto Blocker (Settings › Security and privacy › Auto Blocker) while you install, then switch it back on. Google Play Protect checks the file first."
+            : ""}
+        </Text>
+        <Button label="Get the latest version" theme={theme} onPress={() => Linking.openURL("https://velosolabs.com/ashnote/download")} />
       </ScrollView>
     </View>
   );

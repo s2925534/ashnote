@@ -47,14 +47,14 @@ export function InviteScreen({ theme, onCancel }: { theme: Theme; onCancel: () =
     <ScrollView contentContainerStyle={[styles.pane, { flexGrow: 1 }]}>
       <Text accessibilityRole="header" style={[styles.h, { color: theme.ink }]}>Invite code</Text>
       <View style={styles.qr} accessibilityLabel="Single-use invite code">
-        <QRCode value={inv.code} size={220} backgroundColor="#ffffff" color="#141824" ecl="M" />
+        <QRCode value={inviteLink(inv.code)} size={220} backgroundColor="#ffffff" color="#141824" ecl="M" />
       </View>
       <Text style={[styles.count, { color: left < 60_000 ? theme.amber : theme.ink }]}>Expires in {mmss(left)}</Text>
       {Platform.OS === "web" && (
         <Text selectable testID="invite-code" style={{ color: theme.muted, fontSize: 10, maxWidth: 300 }} numberOfLines={2}>{inv.code}</Text>
       )}
       <Text style={[styles.p, { color: theme.muted }]}>
-        Let the other person scan this with Ashnote. It holds a one-off key, not your identity, and works once.
+        Let the other person scan this with Ashnote or their phone's camera: it opens Ashnote, or the download page if they don't have it yet. It holds a one-off key, not your identity, and works once.
       </Text>
       <Text style={[styles.label, { color: theme.muted }]}>Not together? Send it as a link</Text>
       <Pills label="Link lasts" theme={theme} value={life} onChange={changeLife}
