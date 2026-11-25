@@ -4,7 +4,7 @@ import type { NostrEvent } from "nostr-tools/pure";
 import { Engine, effectiveTtl, stackOf, type Transport } from "../src/core/engine";
 import { aliasFor, safetyCode } from "../src/core/identity";
 import { decodeInvite, encodeInvite, extractInviteCode, inviteLink } from "../src/core/invite";
-import { initRatchet, ratchetDecrypt, ratchetEncrypt } from "../src/core/ratchet";
+import { initRatchet, ratchetDecrypt, ratchetEncrypt, upgrade, type RatchetState, type RatchetV2, type Sealed } from "../src/core/ratchet";
 import { newKeyPair, unwrap, wrap } from "../src/core/wrap";
 
 // ---------- an in-memory relay shared by every phone in a test ----------
@@ -203,8 +203,8 @@ test("forged or replayed traffic is ignored", async () => {
 
 test("ratchet: forward secrecy and out-of-order delivery", () => {
   const x = newKeyPair(), y = newKeyPair();
-  let sx = initRatchet(x.priv, x.pub, y.pub), sy = initRatchet(y.priv, y.pub, x.pub);
-  const sealed: { n: number; c: string }[] = [];
+  let sx: RatchetState = initRatchet(x.priv, x.pub, y.pub), sy: RatchetState = initRatchet(y.priv, y.pub, x.pub);
+  const sealed: Sealed[] = [];
   for (const t of ["a", "b", "c"]) { const r = ratchetEncrypt(sx, t); sx = r.state; sealed.push(r.sealed); }
   let r = ratchetDecrypt(sy, sealed[2]); sy = r.state; assert.equal(r.plaintext, "c");
   r = ratchetDecrypt(sy, sealed[0]); sy = r.state; assert.equal(r.plaintext, "a");
@@ -405,4 +405,98 @@ test("an invite claiming to last more than a day is refused", () => {
   const forged = encodeInvite({ pub: "a".repeat(64), priv: null, secret: "b".repeat(32), relays: ["wss://relay.example"],
     expiresAt: clock + 3 * 24 * 60 * 60_000, status: "pending" });
   assert.equal(decodeInvite(forged, clock).ok, false);
+});
+
+// ---------- Double Ratchet (VLABS-437) ----------
+function drPair() {
+  const x = newKeyPair(), y = newKeyPair();
+  const [lo, hi] = x.pub < y.pub ? [x, y] : [y, x];
+  return { a: initRatchet(lo.priv, lo.pub, hi.pub) as RatchetState, b: initRatchet(hi.priv, hi.pub, lo.pub) as RatchetState };
+}
+const enc = (s: RatchetState, t: string) => ratchetEncrypt(s, t);
+const dec = (s: RatchetState, m: Sealed) => ratchetDecrypt(s, m);
+
+test("double ratchet: starts after both sides show v2, then every reply brings a new ratchet key", () => {
+  let { a, b } = drPair();
+  let r = enc(b, "b first, before a has started"); b = r.state;
+  assert.equal(r.sealed.dh, undefined); assert.equal(r.sealed.cap, 2);
+  let d = dec(a, r.sealed); a = d.state; assert.equal(d.plaintext, "b first, before a has started");
+  r = enc(a, "a starts the ratchet"); a = r.state; assert.ok(r.sealed.dh, "v2 header");
+  const k1 = r.sealed.dh;
+  d = dec(b, r.sealed); b = d.state; assert.equal(d.plaintext, "a starts the ratchet");
+  r = enc(b, "b replies on the ratchet"); b = r.state; assert.ok(r.sealed.dh && r.sealed.dh !== (b as RatchetV2).me.pub);
+  d = dec(a, r.sealed); a = d.state;
+  r = enc(a, "a again"); a = r.state; assert.notEqual(r.sealed.dh, k1, "a moved to a new ratchet key");
+  d = dec(b, r.sealed); b = d.state; assert.equal(d.plaintext, "a again");
+});
+
+test("double ratchet: a copied phone state stops working once the phone has replied on a fresh ratchet key", () => {
+  let { a, b } = drPair();
+  let r = enc(b, "hi"); b = r.state; a = dec(a, r.sealed).state;
+  r = enc(a, "hello"); a = r.state; b = dec(b, r.sealed).state;
+  const stolen: RatchetState = JSON.parse(JSON.stringify(b)); // attacker copies b's keys
+  r = enc(a, "still readable by the copy"); a = r.state;
+  assert.equal(dec(stolen, r.sealed).plaintext, "still readable by the copy");
+  b = dec(b, r.sealed).state;
+  // b's next ratchet key was made before the copy, so one more exchange is still exposed...
+  r = enc(b, "reply on a key the copy knows"); b = r.state; a = dec(a, r.sealed).state;
+  r = enc(a, "a answers"); a = r.state; b = dec(b, r.sealed).state; // b now makes a ratchet key the copy never saw
+  r = enc(b, "b replies on a fresh key"); b = r.state; a = dec(a, r.sealed).state;
+  r = enc(a, "secret after recovery"); a = r.state;
+  assert.equal(dec(b, r.sealed).plaintext, "secret after recovery");
+  assert.throws(() => dec(stolen, r.sealed), "the copied keys no longer open new messages");
+  r = enc(b, "and the other way"); b = r.state;
+  assert.equal(dec(a, r.sealed).plaintext, "and the other way");
+  assert.throws(() => dec(stolen, r.sealed));
+});
+
+test("double ratchet: out-of-order and late messages across ratchet steps", () => {
+  let { a, b } = drPair();
+  let r = enc(b, "x"); b = r.state; a = dec(a, r.sealed).state;
+  const fromA: Sealed[] = [];
+  for (const t of ["a1", "a2", "a3"]) { r = enc(a, t); a = r.state; fromA.push(r.sealed); }
+  let d = dec(b, fromA[2]); b = d.state; assert.equal(d.plaintext, "a3");
+  r = enc(b, "b2"); b = r.state; a = dec(a, r.sealed).state;     // ratchet step
+  r = enc(a, "a4"); a = r.state; d = dec(b, r.sealed); b = d.state; assert.equal(d.plaintext, "a4");
+  d = dec(b, fromA[0]); b = d.state; assert.equal(d.plaintext, "a1", "late message from the previous chain");
+  d = dec(b, fromA[1]); b = d.state; assert.equal(d.plaintext, "a2");
+  assert.throws(() => dec(b, fromA[1]), "each key works once");
+});
+
+test("double ratchet: a phone still on 0.2 keeps talking to a 0.3 phone (v1 chains)", () => {
+  const x = newKeyPair(), y = newKeyPair();
+  let old: RatchetState = initRatchet(x.priv, x.pub, y.pub).legacy; // an older app only has the v1 chains
+  let nu: RatchetState = initRatchet(y.priv, y.pub, x.pub);
+  for (let i = 0; i < 3; i++) {
+    let r = enc(old, "from old " + i); old = r.state;
+    let d = dec(nu, r.sealed); nu = d.state; assert.equal(d.plaintext, "from old " + i);
+    r = enc(nu, "from new " + i); nu = r.state;
+    assert.equal(r.sealed.dh, undefined, "no v2 header until the other phone shows v2");
+    d = dec(old, r.sealed); old = d.state; assert.equal(d.plaintext, "from new " + i);
+  }
+  assert.equal((nu as RatchetV2).peerV2, false);
+});
+
+test("double ratchet: a contact stored by 0.2 upgrades in place and keeps its message counters", () => {
+  const x = newKeyPair(), y = newKeyPair();
+  let sx: RatchetState = initRatchet(x.priv, x.pub, y.pub).legacy, sy: RatchetState = initRatchet(y.priv, y.pub, x.pub).legacy;
+  for (let i = 0; i < 2; i++) { const r = enc(sx, "old " + i); sx = r.state; sy = dec(sy, r.sealed).state; }
+  sx = upgrade(sx, x.priv, x.pub, y.pub); sy = upgrade(sy, y.priv, y.pub, x.pub); // both phones update
+  for (let i = 0; i < 4; i++) {
+    let r = enc(sx, "x" + i); sx = r.state; let d = dec(sy, r.sealed); sy = d.state; assert.equal(d.plaintext, "x" + i);
+    r = enc(sy, "y" + i); sy = r.state; d = dec(sx, r.sealed); sx = d.state; assert.equal(d.plaintext, "y" + i);
+  }
+  assert.ok((sx as RatchetV2).dhs && (sy as RatchetV2).dhs, "the ratchet is running on both phones");
+});
+
+test("engine: paired phones move to the double ratchet as they chat", async () => {
+  const { A, B, a, b } = await pair();
+  for (let i = 0; i < 3; i++) {
+    await A.e.send(a.id, "ping " + i); await flush();
+    await B.e.send(b.id, "pong " + i); await flush();
+  }
+  const ra = A.e.state.contacts[a.id].ratchet as RatchetV2, rb = B.e.state.contacts[b.id].ratchet as RatchetV2;
+  assert.equal(ra.v, 2); assert.ok(ra.dhs && rb.dhs && ra.peerV2 && rb.peerV2);
+  assert.ok(B.e.state.contacts[b.id].messages.some((m) => m.text === "ping 2"));
+  assert.ok(A.e.state.contacts[a.id].messages.some((m) => m.text === "pong 2"));
 });

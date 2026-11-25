@@ -2,7 +2,7 @@
 // Pure TypeScript with no React Native imports, so it runs (and is tested) under Node.
 import { safetyCode } from "./identity";
 import { createInvite, decodeInvite, encodeInvite, type Invite, INVITE_LIFETIMES_MS, INVITE_LIFETIME_MS } from "./invite";
-import { initRatchet, ratchetDecrypt, ratchetEncrypt, type RatchetState } from "./ratchet";
+import { initRatchet, ratchetDecrypt, ratchetEncrypt, upgrade, type RatchetState } from "./ratchet";
 import { newKeyPair, unwrap, wrap } from "./wrap";
 import type { NostrEvent } from "nostr-tools/pure";
 
@@ -311,7 +311,7 @@ export class Engine {
     let inner: Inner;
     try {
       const sealed = JSON.parse(opened.content);
-      const r = ratchetDecrypt(c.ratchet, sealed);
+      const r = ratchetDecrypt(upgrade(c.ratchet, c.myPriv, c.myPub, c.theirPub), sealed);
       c.ratchet = r.state;
       inner = JSON.parse(r.plaintext);
     } catch { return false; }
@@ -382,7 +382,7 @@ export class Engine {
 
   // ---------- outgoing ----------
   private async sendInner(c: Contact, inner: Inner) {
-    const r = ratchetEncrypt(c.ratchet, JSON.stringify(inner));
+    const r = ratchetEncrypt(upgrade(c.ratchet, c.myPriv, c.myPub, c.theirPub), JSON.stringify(inner));
     c.ratchet = r.state;
     const now = this.deps.now();
     const ev = wrap(c.myPriv, c.theirPub, JSON.stringify(r.sealed), now, now + RELAY_EXPIRY_MS);
