@@ -17,7 +17,7 @@ for a in "-e command enter" "-e command clock -e hhmm 0945" "-e command battery 
   adb shell am broadcast -a com.android.systemui.demo $a > /dev/null || true
 done
 
-collect() { find "$PWD" "$HOME/.maestro" -name 'android-*.png' -not -path '*/node_modules/*' -not -path "$PWD/shots/*" -exec mv {} shots/ \; 2>/dev/null || true; }
+collect() { find "$PWD" "$HOME/.maestro" -name 'android-*.png' -not -path '*/node_modules/*' -not -path "$PWD/shots/*" -not -path "$PWD/assets/*" -not -path "$PWD/android/*" -exec mv {} shots/ \; 2>/dev/null || true; }
 fail() { collect; adb exec-out screencap -p > "shots/zz-failed-$1.png" || true; echo "FAILED: $1"; echo "--- peer.log"; cat peer.log; echo "--- relay.log"; tail -20 relay.log
          echo "--- app log"; adb logcat -d -s ReactNativeJS:* ReactNative:* | tail -60; exit 1; }
 flow() { maestro test "scripts/shots/maestro/$1.yaml" || fail "$1"; }
