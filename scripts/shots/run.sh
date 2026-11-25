@@ -17,10 +17,13 @@ for a in "-e command enter" "-e command clock -e hhmm 0945" "-e command battery 
   adb shell am broadcast -a com.android.systemui.demo $a > /dev/null || true
 done
 
-fail() { find scripts/shots/maestro -name 'android-*.png' -exec mv {} shots/ \; ; echo "FAILED: $1"; echo "--- peer.log"; cat peer.log; echo "--- relay.log"; tail -20 relay.log
+collect() { find "$PWD" "$HOME/.maestro" -name 'android-*.png' -not -path '*/node_modules/*' -not -path "$PWD/shots/*" -exec mv {} shots/ \; 2>/dev/null || true; }
+fail() { collect; adb exec-out screencap -p > "shots/zz-failed-$1.png" || true; echo "FAILED: $1"; echo "--- peer.log"; cat peer.log; echo "--- relay.log"; tail -20 relay.log
          echo "--- app log"; adb logcat -d -s ReactNativeJS:* ReactNative:* | tail -60; exit 1; }
 flow() { maestro test "scripts/shots/maestro/$1.yaml" || fail "$1"; }
 
+adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null || true
+sleep 10
 adb logcat -c
 flow 1-start
 CODE=$(adb logcat -d -s ReactNativeJS:* | grep -o 'ashnote:1:[A-Za-z0-9_-]*' | tail -1)
@@ -34,5 +37,5 @@ echo "sos" >> peer-commands.txt
 flow 4-rest
 cat peer.log
 # Maestro saves takeScreenshot paths next to the flow file; gather them into ./shots
-find scripts/shots/maestro -name 'android-*.png' -exec mv {} shots/ \;
+collect
 ls -la shots
