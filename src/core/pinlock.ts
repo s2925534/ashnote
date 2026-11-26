@@ -8,9 +8,11 @@ import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 export const PIN_MIN = 4;
 export const PIN_MAX = 8;
 export const PIN_ITERATIONS = 150_000;
-export const FREE_TRIES = 3;           // wrong tries before the first wait
-export const FIRST_WAIT_MS = 30_000;   // then 30 s, doubling each time
-export const MAX_WAIT_MS = 3_600_000;  // capped at an hour
+// The mobile app lock standard (owner's rule, 2026-11-26): after 5 wrong tries,
+// waits of 30 s, 1 min, 5 min, then 15 min for every further wrong try.
+export const FREE_TRIES = 5;
+export const WAITS_MS = [30_000, 60_000, 300_000] as const;
+export const MAX_WAIT_MS = 900_000;
 export const RELOCK_AFTER_MS = 60_000; // back from the background after a minute: ask again
 
 export type PinRecord = { v: 1; salt: string; hash: string; iterations: number; fails: number; waitUntil: number };
@@ -32,7 +34,7 @@ export async function makeRecord(pin: string, salt: Uint8Array, iterations = PIN
 /** How long to wait after this many wrong tries in a row (0 while tries are still free). */
 export function waitAfter(fails: number): number {
   if (fails < FREE_TRIES) return 0;
-  return Math.min(MAX_WAIT_MS, FIRST_WAIT_MS * 2 ** (fails - FREE_TRIES));
+  return WAITS_MS[fails - FREE_TRIES] ?? MAX_WAIT_MS;
 }
 
 export type TryResult =
@@ -67,5 +69,5 @@ export function describeWait(ms: number): string {
   const s = Math.ceil(ms / 1000);
   if (s < 60) return `${s} s`;
   const m = Math.ceil(s / 60);
-  return m < 60 ? `${m} min` : "1 hour";
+  return `${m} min`;
 }

@@ -33,16 +33,20 @@ test("wrong tries count down, then waits grow and are enforced", async () => {
   // during the wait even the right PIN is not checked
   t = await tryPin(r, "2468", 2000);
   assert.ok(!t.ok && t.waitMs > 0 && t.record.fails === r.fails);
-  // after the wait, another wrong try doubles it
-  t = await tryPin(r, "1111", 1000 + 30_000);
-  assert.ok(!t.ok && t.waitMs === 60_000);
-  r = t.record;
+  // after the wait, the next wrong tries wait 1 min, then 5 min
+  let now = 1000 + 30_000;
+  for (const expected of [60_000, 300_000, 900_000, 900_000]) {
+    t = await tryPin(r, "1111", now);
+    assert.ok(!t.ok && t.waitMs === expected, `${t.ok ? "" : t.waitMs} != ${expected}`);
+    r = t.record;
+    now += expected;
+  }
   // the right PIN after the wait resets everything
-  t = await tryPin(r, "2468", 1000 + 30_000 + 60_000);
+  t = await tryPin(r, "2468", now);
   assert.ok(t.ok && t.record.fails === 0 && t.record.waitUntil === 0);
 });
 
-test("waits are capped at an hour", () => {
+test("waits follow the standard: 30 s, 1 min, 5 min, then 15 min each", () => {
   assert.equal(waitAfter(FREE_TRIES - 1), 0);
   assert.equal(waitAfter(50), MAX_WAIT_MS);
 });

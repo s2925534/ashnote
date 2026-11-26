@@ -57,7 +57,11 @@ Release, and publishes the APK to velosolabs.com/ashnote/download. Every new ver
 there as soon as it's released (owner's rule, 2026-11-26), until the VelosoLabs app store is ready:
 then the download page sends people to the store instead. The APK build (`EXPO_PUBLIC_DIST=apk`)
 also shows a "Support Ashnote" tip link in Settings; the store AAB doesn't, since app stores don't
-allow links to outside payments. Store submissions (App Store,
+allow links to outside payments. Release notes (owner's rule, 2026-11-26): every version needs `release-notes/<version>.md` (at least one
+plain sentence; "Maintenance and stability improvements" when nothing visible changed). The release
+workflow refuses to build without it, puts it in the GitHub Release and sends it with the upload, so it
+shows as the release notes on apps.velosolabs.com/ashnote. Keep the "What's new" guide on velosolabs.com
+in step. Store submissions (App Store,
 Google Play) are owner actions: VLABS-410, VLABS-411. F-Droid was dropped (owner decision, 2026-11-26).
 
 Secrets: `ASHNOTE_KEYSTORE_BASE64`, `ASHNOTE_KEYSTORE_PASSWORD`, `ASHNOTE_KEY_ALIAS`,
