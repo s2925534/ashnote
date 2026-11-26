@@ -1,0 +1,22 @@
+appId: com.velosolabs.ashnote
+---
+# VLABS-464 upgrade test (scripts/shots/lock-test.sh): 0.5.3 set PIN 2468 and paired one contact;
+# this build replaced it. The PIN must still open the chats, and moves the key behind the lock.
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Enter your PIN"
+    timeout: 45000
+- tapOn: "2"
+- tapOn: "4"
+- tapOn: "6"
+- tapOn: "8"
+- extendedWaitUntil:
+    visible: "Open chat with.*"
+    timeout: 30000
+- takeScreenshot: shots/lock-test-1-upgraded
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "Data key moved behind the lock"
+    timeout: 15000
+- takeScreenshot: shots/lock-test-2-events

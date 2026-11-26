@@ -1,0 +1,89 @@
+name: lock-test
+
+# VLABS-464: the database key behind the app lock. Installs 0.5.3 on an emulator, sets a PIN and pairs a
+# contact, installs this build over it, then checks the PIN still opens the chats (the key moves behind the
+# lock) and that Forgot PIN with the phone's own screen lock keeps them. Manual, and on pull requests that
+# touch the lock.
+
+on:
+  workflow_dispatch:
+    inputs:
+      old_ref:
+        description: The release to update from
+        default: af0a589
+  pull_request:
+    paths:
+      - src/lib/lock.ts
+      - src/lib/storage.ts
+      - src/core/pinlock.ts
+      - src/screens/Lock.tsx
+      - modules/**
+      - scripts/shots/lock-test.sh
+      - scripts/shots/maestro/u*.yaml
+      - .github/workflows/lock-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      OLD_REF: ${{ inputs.old_ref || 'af0a589' }}
+      EXPO_PUBLIC_SCREENSHOT_MODE: "1"
+      EXPO_PUBLIC_RELAYS: ws://localhost:7777
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Install Maestro
+        run: curl -fsSL "https://get.maestro.mobile.dev" | bash
+      - name: Build the old release (${{ env.OLD_REF }})
+        run: |
+          git worktree add ../old "$OLD_REF"
+          cd ../old
+          npm ci
+          npx expo prebuild --platform android --no-install
+          sed -i 's/<application /<application android:usesCleartextTraffic="true" /' android/app/src/main/AndroidManifest.xml
+          (cd android && ./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=x86_64)
+          cp android/app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/old.apk"
+          # same debug signing key for both builds, so the new one installs as an update
+          cp android/app/debug.keystore "$GITHUB_WORKSPACE/debug.keystore"
+          cd .. && rm -rf old/android old/node_modules
+      - name: Build this branch
+        run: |
+          npm ci
+          npx expo prebuild --platform android --no-install
+          sed -i 's/<application /<application android:usesCleartextTraffic="true" /' android/app/src/main/AndroidManifest.xml
+          cp debug.keystore android/app/debug.keystore
+          (cd android && ./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=x86_64)
+          cp android/app/build/outputs/apk/release/app-release.apk new.apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Update and recovery test on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/shots/lock-test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lock-test
+          path: shots/

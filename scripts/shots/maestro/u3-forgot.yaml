@@ -1,0 +1,46 @@
+appId: com.velosolabs.ashnote
+---
+# Forgot PIN with the phone's own screen lock PIN (1111, set by lock-test.sh): the vault opens the chats,
+# a new PIN is chosen, and the contact is still there. Then the new PIN works on its own.
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Enter your PIN"
+    timeout: 45000
+- tapOn: "Forgot PIN?"
+- tapOn: "Use fingerprint or phone passcode"
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: shots/lock-test-3-owner-prompt
+- inputText: "1111"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible: "Phone confirmed. Choose a new PIN."
+    timeout: 20000
+- tapOn: "1"
+- tapOn: "3"
+- tapOn: "5"
+- tapOn: "7"
+- extendedWaitUntil:
+    visible: "Enter the PIN again"
+    timeout: 10000
+- tapOn: "1"
+- tapOn: "3"
+- tapOn: "5"
+- tapOn: "7"
+- extendedWaitUntil:
+    visible: "Open chat with.*"
+    timeout: 30000
+- takeScreenshot: shots/lock-test-4-after-forgot
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Enter your PIN"
+    timeout: 45000
+- tapOn: "1"
+- tapOn: "3"
+- tapOn: "5"
+- tapOn: "7"
+- extendedWaitUntil:
+    visible: "Open chat with.*"
+    timeout: 30000

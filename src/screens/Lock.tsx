@@ -1,11 +1,12 @@
-// The app lock screen (VLABS-459): choose a PIN on first run, enter it when Ashnote opens.
-// Forgot PIN: the phone's own owner check (fingerprint, face or passcode) lets you choose a new
-// PIN; otherwise Reset Ashnote deletes everything on this phone. Nothing goes to a server.
+// The app lock screen (VLABS-459, VLABS-464): choose a PIN on first run, enter it when Ashnote opens.
+// The PIN (or the phone's owner check) releases the key that opens your chats.
+// Forgot PIN: the phone's own owner check (fingerprint, face or passcode) opens the chats and lets you
+// choose a new PIN; otherwise Reset Ashnote deletes everything on this phone. Nothing goes to a server.
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { PIN_DEFAULT_LENGTH, PIN_MAX, PIN_MIN, describeWait, validPin } from "../core/pinlock";
 import {
-  biometricsOn, checkPin, confirmPhoneOwner, deviceLockAvailable, loadPin, resetApp, setPin, unlockWithBiometrics,
+  biometricsOn, checkPin, confirmPhoneOwner, loadPin, ownerCheckCanUnlock, resetApp, setPin, unlockWithBiometrics,
 } from "../lib/lock";
 import { Mark } from "../ui/Mark";
 import { Button, Dialog } from "../ui/kit";
@@ -28,11 +29,11 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
   const [savedLen, setSavedLen] = useState<number | undefined>(undefined); // the stored PIN's length, to check it as soon as it's typed
 
   useEffect(() => {
-    deviceLockAvailable().then(setCanOwner);
+    ownerCheckCanUnlock().then(setCanOwner);
     if (initial === "unlock") {
       biometricsOn().then((on) => {
         setBio(on);
-        if (on) unlockWithBiometrics().then((ok) => ok && onUnlocked()).catch(() => {});
+        if (on) unlockWithBiometrics().then((r) => r === "ok" && onUnlocked()).catch(() => {});
       });
       // show a running wait straight away
       loadPin().then((r) => {
@@ -90,8 +91,10 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
 
   const ownerCheck = async () => {
     setForgot(false);
-    if (await confirmPhoneOwner()) { setViaOwner(true); setEntry(""); setFirst(""); setMsg("Phone confirmed. Choose a new PIN."); setStage("set"); }
-    else setMsg("The phone check didn't go through.");
+    const r = await confirmPhoneOwner().catch(() => "unavailable" as const);
+    if (r === "ok") { setViaOwner(true); setEntry(""); setFirst(""); setMsg("Phone confirmed. Choose a new PIN."); setStage("set"); }
+    else if (r === "cancelled") setMsg("The phone check didn't go through.");
+    else { setCanOwner(false); setMsg("The phone check couldn't open your chats here. Use your PIN, or reset Ashnote."); }
   };
   const reset = async () => {
     setConfirmReset(false); setForgot(false);
@@ -135,7 +138,7 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
       )}
       {stage === "unlock" && (
         <View style={styles.links}>
-          {bio && <Text accessibilityRole="button" onPress={() => unlockWithBiometrics().then((ok) => ok && onUnlocked())} style={[styles.link, { color: theme.accent }]}>Use fingerprint or face</Text>}
+          {bio && <Text accessibilityRole="button" onPress={() => unlockWithBiometrics().then((r) => r === "ok" && onUnlocked()).catch(() => {})} style={[styles.link, { color: theme.accent }]}>Use fingerprint or face</Text>}
           <Text accessibilityRole="button" onPress={() => setForgot(true)} style={[styles.link, { color: theme.accent }]}>Forgot PIN?</Text>
         </View>
       )}
@@ -143,8 +146,8 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
       <Dialog visible={forgot} onClose={() => setForgot(false)} theme={theme} title="Forgot your PIN?">
         <Text style={{ color: theme.muted, fontSize: 14, lineHeight: 20 }}>
           {canOwner
-            ? "Prove it's your phone with its fingerprint, face or passcode, then choose a new PIN. Nothing goes to a server."
-            : "This phone has no screen lock, so it can't confirm its owner. You can reset Ashnote instead."}
+            ? "Prove it's your phone with its fingerprint, face or passcode. Your chats open and you choose a new PIN. Nothing goes to a server."
+            : "Your phone had no screen lock when you last unlocked Ashnote, so it can't open your chats without the PIN. You can reset Ashnote instead."}
         </Text>
         {canOwner && <Button label="Use fingerprint or phone passcode" primary theme={theme} onPress={ownerCheck} />}
         <Text style={{ color: theme.muted, fontSize: 13, lineHeight: 19 }}>

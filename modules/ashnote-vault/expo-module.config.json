@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["AshnoteVaultModule"] },
+  "android": { "modules": ["com.velosolabs.ashnote.vault.AshnoteVaultModule"] }
+}

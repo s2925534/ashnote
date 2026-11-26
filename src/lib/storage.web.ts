@@ -20,3 +20,13 @@ export async function loadSetting(key: string): Promise<string | null> {
 export async function saveSetting(key: string, value: string) {
   settings[key] = value;
 }
+
+// The web build has no app lock; these keep the same shape as the phone version.
+export function setDatabaseKey(_k: string) {}
+export function databaseKey(): string | null { return null; }
+export async function legacyKey(): Promise<string | null> { return null; }
+export async function deleteLegacyKey() {}
+export function lockDatabase() {}
+export async function destroyDatabase() { memory = null; }
+export async function loadDeviceSetting(name: string): Promise<string | null> { return settings["device:" + name] ?? null; }
+export async function saveDeviceSetting(name: string, value: string) { settings["device:" + name] = value; }
