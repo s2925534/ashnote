@@ -89,6 +89,8 @@ jobs:
       - name: Collect files
         run: |
           VERSION=$(node -p "require('./app.json').expo.version")
+          # Release notes for every version (owner's rule, 2026-11-26): one plain sentence at least.
+          if [ ! -s "release-notes/$VERSION.md" ]; then echo "::error::Add release-notes/$VERSION.md before releasing $VERSION"; exit 1; fi
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk "dist/ashnote-$VERSION.apk"
           SIZE=$(stat -c %s "dist/ashnote-$VERSION.apk")
@@ -106,7 +108,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v$VERSION"
-          NOTES="Ashnote $VERSION for Android."
+          NOTES="Ashnote $VERSION for Android. $(cat "release-notes/$VERSION.md")"
           if [ "${{ steps.sign.outputs.signed }}" != "true" ]; then
             TAG="v$VERSION-test-${GITHUB_RUN_NUMBER}"
             NOTES="Test build (debug-signed, not for the stores or the public download)."
@@ -122,4 +124,5 @@ jobs:
           if [ -z "$TOKEN" ]; then echo "HUB_ADMIN_TOKEN not set: skipping the public download"; exit 0; fi
           curl -fsS -X POST "https://velosolabs.com/api/v1/admin/ashnote/upload" \
             -H "Authorization: Bearer $TOKEN" \
-            --form-string "version=$VERSION" -F "file=@dist/ashnote-$VERSION.apk"
+            --form-string "version=$VERSION" --form-string "changelog=$(cat "release-notes/$VERSION.md")" \
+            -F "file=@dist/ashnote-$VERSION.apk"
