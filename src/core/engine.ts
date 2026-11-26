@@ -4,10 +4,14 @@ import { safetyCode } from "./identity";
 import { createInvite, decodeInvite, encodeInvite, type Invite, INVITE_LIFETIMES_MS, INVITE_LIFETIME_MS } from "./invite";
 import { initRatchet, ratchetDecrypt, ratchetEncrypt, upgrade, type RatchetState } from "./ratchet";
 import { newKeyPair, unwrap, wrap } from "./wrap";
-import type { NostrEvent } from "nostr-tools/pure";
+import { getPublicKey, type NostrEvent } from "nostr-tools/pure";
+import { hexToBytes } from "@noble/hashes/utils.js";
 
 /** Most contacts one phone can have (VLABS-427): keeps relay subscriptions and an SOS to everyone fast. */
 export const MAX_CONTACTS = 50;
+/** Group chats (VLABS-427): up to 8 people, a phone in up to 20 groups. */
+export const MAX_GROUP_MEMBERS = 8;
+export const MAX_GROUPS = 20;
 export const CONTACTS_FULL = `You have ${MAX_CONTACTS} contacts, the most Ashnote allows. Remove one to add someone new.`;
 export const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
 export const TTL_CHOICES = [0, 30_000, 300_000, 3_600_000, 86_400_000] as const; // 0 = Off
@@ -55,6 +59,31 @@ export type Contact = {
   pairedAt: number;
 };
 
+/** A message in a group: who sent it is their member key for this group. */
+export type GroupMsg = Msg & { from: string };
+
+/**
+ * A group chat. Messages are gift-wrapped once to the group key and read by every member who holds
+ * its private half; each member signs (seals) with a key made for this group, checked against the
+ * member list the creator keeps. The creator invites contacts over their pairwise channels, and replaces
+ * the group key when someone leaves. No server: the relays see one wrapped event per message.
+ */
+export type Group = {
+  id: string;
+  gpriv: string;
+  gpub: string;
+  me: { priv: string; pub: string };
+  creator: string; // the creator's member key
+  members: string[]; // member keys, including mine
+  invited?: Record<string, string>; // creator only: contact id -> member key once they join
+  via?: string; // members only: the contact (the creator) who invited us
+  ttl: number;
+  messages: GroupMsg[];
+  tombstones: Record<string, number>;
+  createdAt: number;
+  ended?: boolean; // the creator left: read-only
+};
+
 // Both sides of a pairing end when the invite code expires: the symbols are only shown until then.
 type Outgoing = { invitePub: string; myPriv: string; myPub: string; safety: string[]; createdAt: number; expiresAt: number };
 type Request = { invitePub: string; requesterPub: string; safety: string[]; at: number; expiresAt: number };
@@ -67,6 +96,7 @@ export type State = {
   outgoing: Record<string, Outgoing>; // by my pending key
   requests: Record<string, Request>; // by invite key
   contacts: Record<string, Contact>;
+  groups?: Record<string, Group>;
   outbox: Outbox[];
   seen: string[];
   lastSync: number;
@@ -83,7 +113,9 @@ export type Notice =
   | { type: "pair-expired"; safety: string[] }
   | { type: "screenshot"; contactId: string }
   | { type: "alert"; contactId: string; msgId: string; level: "sos" | "help" }
-  | { type: "message"; contactId: string };
+  | { type: "message"; contactId: string }
+  | { type: "group-message"; groupId: string }
+  | { type: "group-added"; groupId: string }
 
 export interface Transport {
   publish(event: NostrEvent): Promise<boolean>;
@@ -108,7 +140,18 @@ type Inner =
   | { t: "ttl"; ttl: number }
   | { t: "shot" }
   | { t: "img"; id: string; i: number; n: number; d: string; w: number; h: number; ttl: number; at: number }
-  | { t: "alert"; id: string; level: "sos" | "help"; loc: Location | null; shared?: boolean; text: string; at: number };
+  | { t: "alert"; id: string; level: "sos" | "help"; loc: Location | null; shared?: boolean; text: string; at: number }
+  | { t: "ginv"; g: { id: string; gpriv: string; creator: string; members: string[]; ttl: number } }
+  | { t: "gjoin"; id: string; pub: string }
+  | { t: "gkey"; id: string; gpriv: string; members: string[] };
+
+/** What travels in a group channel (gift-wrapped to the group key, sealed by the member's group key). */
+type GroupInner =
+  | { t: "gmsg"; id: string; text: string; ttl: number; at: number }
+  | { t: "gdel"; id: string }
+  | { t: "groster"; members: string[] }
+  | { t: "gleave" }
+  | { t: "gend" };
 
 export class Engine {
   state: State;
@@ -146,6 +189,7 @@ export class Engine {
       ...Object.values(s.invites).filter((i) => i.status === "pending" && i.priv).map((i) => i.pub),
       ...Object.keys(s.outgoing),
       ...Object.keys(s.contacts),
+      ...Object.values(s.groups ?? {}).filter((g) => !g.ended).map((g) => g.gpub),
     ];
   }
   start() {
@@ -270,6 +314,10 @@ export class Engine {
     if (inv) used = this.onInviteEvent(inv, event);
     else if (this.state.outgoing[to]) used = this.onOutgoingEvent(this.state.outgoing[to], event);
     else if (this.state.contacts[to]) used = this.onContactEvent(this.state.contacts[to], event);
+    else {
+      const g = Object.values(this.state.groups ?? {}).find((x) => x.gpub === to && !x.ended);
+      if (g) used = this.onGroupEvent(g, event);
+    }
     this.state.seen.push(event.id);
     if (this.state.seen.length > 3000) this.state.seen.splice(0, this.state.seen.length - 3000);
     this.state.lastSync = Math.max(this.state.lastSync, event.created_at * 1000);
@@ -387,8 +435,192 @@ export class Engine {
         this.notify({ type: "screenshot", contactId: c.id });
         return true;
       }
+      case "ginv":
+        return this.onGroupInvite(c, inner.g);
+      case "gjoin":
+        return this.onGroupJoin(c, inner.id, inner.pub);
+      case "gkey": {
+        const g = this.state.groups?.[inner.id];
+        if (!g || !isHex64(inner.gpriv) || !Array.isArray(inner.members) || !inner.members.includes(g.me.pub)) return false;
+        if (!this.groupCreatorContact(g, c)) return false; // only the creator replaces the key
+        g.gpriv = inner.gpriv;
+        g.gpub = pubOf(inner.gpriv);
+        g.members = inner.members.filter(isHex64).slice(0, MAX_GROUP_MEMBERS);
+        this.rewatch();
+        return true;
+      }
     }
     return false;
+  }
+
+  // ---------- groups (VLABS-427) ----------
+  groupList(): Group[] {
+    return Object.values(this.state.groups ?? {}).sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  /** Creates a group with up to 7 of my contacts and invites them over our pairwise channels. */
+  async createGroup(contactIds: string[]): Promise<string | null> {
+    const ids = [...new Set(contactIds)].filter((id) => this.state.contacts[id]);
+    if (!ids.length || ids.length > MAX_GROUP_MEMBERS - 1) return null;
+    if (Object.keys(this.state.groups ?? {}).length >= MAX_GROUPS) return null;
+    const gk = newKeyPair(), me = newKeyPair(), now = this.deps.now();
+    const g: Group = { id: rid() + rid(), gpriv: gk.priv, gpub: gk.pub, me, creator: me.pub, members: [me.pub], invited: {},
+      ttl: DEFAULT_TTL, messages: [], tombstones: {}, createdAt: now };
+    for (const id of ids) g.invited![id] = "";
+    (this.state.groups ??= {})[g.id] = g;
+    this.rewatch();
+    this.changed();
+    for (const id of ids)
+      await this.sendInner(this.state.contacts[id], { t: "ginv", g: { id: g.id, gpriv: g.gpriv, creator: g.creator, members: g.members, ttl: g.ttl } });
+    return g.id;
+  }
+
+  private onGroupInvite(c: Contact, inv: { id: string; gpriv: string; creator: string; members: string[]; ttl: number }): boolean {
+    if (!inv || typeof inv.id !== "string" || !/^[0-9a-f]{48}$/.test(inv.id) || !isHex64(inv.gpriv) || !isHex64(inv.creator)) return false;
+    if (this.state.groups?.[inv.id]) return true;
+    if (Object.keys(this.state.groups ?? {}).length >= MAX_GROUPS) return true; // full: ignore quietly
+    const me = newKeyPair();
+    const members = (Array.isArray(inv.members) ? inv.members.filter(isHex64) : []).slice(0, MAX_GROUP_MEMBERS - 1);
+    const g: Group = { id: inv.id, gpriv: inv.gpriv, gpub: pubOf(inv.gpriv), me, creator: inv.creator, members: [...members, me.pub],
+      ttl: Number(inv.ttl) || DEFAULT_TTL, messages: [], tombstones: {}, createdAt: this.deps.now() };
+    (this.state.groups ??= {})[g.id] = g;
+    g.via = c.id; // the contact who invited us (the creator)
+    this.rewatch();
+    this.notify({ type: "group-added", groupId: g.id });
+    void this.sendInner(c, { t: "gjoin", id: g.id, pub: me.pub });
+    return true;
+  }
+
+  private onGroupJoin(c: Contact, id: string, pub: string): boolean {
+    const g = this.state.groups?.[id];
+    if (!g || !g.invited || !(c.id in g.invited) || g.invited[c.id] || !isHex64(pub)) return false;
+    if (g.members.length >= MAX_GROUP_MEMBERS) return true;
+    g.invited[c.id] = pub;
+    g.members.push(pub);
+    void this.publishGroup(g, { t: "groster", members: g.members });
+    return true;
+  }
+
+  private groupCreatorContact(g: Group, c: Contact): boolean {
+    return g.via === c.id;
+  }
+
+  private async publishGroup(g: Group, inner: GroupInner) {
+    const now = this.deps.now();
+    const ev = wrap(g.me.priv, g.gpub, JSON.stringify(inner), now, now + RELAY_EXPIRY_MS);
+    this.deps.save(this.state);
+    return this.publish(ev);
+  }
+
+  private onGroupEvent(g: Group, event: NostrEvent): boolean {
+    const opened = unwrap(event, g.gpriv);
+    if (!opened) return false;
+    let inner: GroupInner;
+    try { inner = JSON.parse(opened.content); } catch { return false; }
+    const from = opened.sender;
+    if (from === g.me.pub) return false; // our own event echoed back
+    const now = this.deps.now();
+    if (inner.t === "groster") {
+      if (from !== g.creator || !Array.isArray(inner.members)) return false;
+      const members = inner.members.filter(isHex64).slice(0, MAX_GROUP_MEMBERS);
+      if (!members.includes(g.me.pub)) return false;
+      g.members = members;
+      return true;
+    }
+    if (!g.members.includes(from)) return false; // not (or no longer) a member
+    switch (inner.t) {
+      case "gmsg": {
+        if (g.tombstones[inner.id] || g.messages.some((m) => m.id === inner.id)) return true;
+        g.messages.push({ id: String(inner.id), from, side: "theirs", text: String(inner.text).slice(0, MAX_TEXT), ttl: Number(inner.ttl) || 0,
+          sentAt: Number(inner.at) || now, order: ++this.state.seq, status: "received", readAt: null, eff: null, expiresAt: null });
+        this.notify({ type: "group-message", groupId: g.id });
+        return true;
+      }
+      case "gdel": {
+        const i = g.messages.findIndex((m) => m.id === inner.id && m.from === from);
+        if (i >= 0) g.messages.splice(i, 1);
+        else g.tombstones[inner.id] = now;
+        return true;
+      }
+      case "gleave": {
+        g.members = g.members.filter((m) => m !== from);
+        if (g.me.pub === g.creator) void this.rekeyGroup(g, from);
+        return true;
+      }
+      case "gend": {
+        if (from !== g.creator) return false;
+        g.ended = true;
+        this.rewatch();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Creator: someone left, so make a new group key and send it to everyone still in the group. */
+  private async rekeyGroup(g: Group, gone: string) {
+    const gk = newKeyPair();
+    g.gpriv = gk.priv;
+    g.gpub = gk.pub;
+    g.members = g.members.filter((m) => m !== gone);
+    for (const [cid, pub] of Object.entries(g.invited ?? {})) {
+      if (pub === gone) delete g.invited![cid];
+      else if (pub && this.state.contacts[cid]) await this.sendInner(this.state.contacts[cid], { t: "gkey", id: g.id, gpriv: g.gpriv, members: g.members });
+    }
+    this.rewatch();
+    this.changed();
+  }
+
+  async sendGroup(groupId: string, text: string, opts: { keepCopy?: boolean } = {}): Promise<GroupMsg | null> {
+    const g = this.state.groups?.[groupId];
+    const body = text.trim().slice(0, MAX_TEXT);
+    if (!g || g.ended || !body) return null;
+    const now = this.deps.now();
+    const m: GroupMsg = { id: rid(), from: g.me.pub, side: "mine", text: body, ttl: g.ttl, sentAt: now, order: ++this.state.seq, status: "sent",
+      readAt: now, eff: g.ttl, expiresAt: g.ttl ? now + g.ttl : null };
+    if (opts.keepCopy !== false) g.messages.push(m);
+    this.changed();
+    await this.publishGroup(g, { t: "gmsg", id: m.id, text: body, ttl: g.ttl, at: now });
+    return m;
+  }
+
+  /** A received group message counts as read when it is on screen; its sender's timer then runs. */
+  markGroupRead(groupId: string, msgId: string) {
+    const m = this.state.groups?.[groupId]?.messages.find((x) => x.id === msgId && x.side === "theirs");
+    if (!m || m.readAt != null) return;
+    const now = this.deps.now();
+    m.readAt = now;
+    m.status = "read";
+    m.eff = m.ttl;
+    m.expiresAt = m.ttl ? now + m.ttl : null;
+    this.changed();
+  }
+
+  /** Double-tap: my message goes from every phone; someone else's goes from mine. */
+  async deleteGroupNow(groupId: string, msgId: string) {
+    const g = this.state.groups?.[groupId];
+    const i = g ? g.messages.findIndex((m) => m.id === msgId) : -1;
+    if (!g || i < 0) return;
+    const [m] = g.messages.splice(i, 1);
+    this.changed();
+    if (m.side === "mine" && !g.ended) await this.publishGroup(g, { t: "gdel", id: m.id });
+  }
+
+  setGroupTtl(groupId: string, ttl: number) {
+    const g = this.state.groups?.[groupId];
+    if (!g) return;
+    g.ttl = ttl;
+    this.changed();
+  }
+
+  /** Leaves (or, for the creator, ends) a group and deletes it from this phone. */
+  async leaveGroup(groupId: string) {
+    const g = this.state.groups?.[groupId];
+    if (!g) return;
+    if (!g.ended) await this.publishGroup(g, { t: g.me.pub === g.creator ? "gend" : "gleave" });
+    delete this.state.groups![groupId];
+    this.rewatch();
+    this.changed();
   }
 
   // ---------- outgoing ----------
@@ -584,10 +816,19 @@ export class Engine {
       if (this.promoteImage(c)) dirty = true; // the photo on screen went: the next queued one comes up
       for (const [id, at] of Object.entries(c.tombstones)) if (now - at > RELAY_EXPIRY_MS + 86_400_000) { delete c.tombstones[id]; dirty = true; }
     }
+    for (const g of Object.values(this.state.groups ?? {})) {
+      const before = g.messages.length;
+      g.messages = g.messages.filter((m) => !(m.expiresAt != null && now >= m.expiresAt) && !(m.readAt == null && now - m.sentAt > MAX_UNREAD_MS));
+      if (g.messages.length !== before) dirty = true;
+      for (const [id, at] of Object.entries(g.tombstones)) if (now - at > RELAY_EXPIRY_MS + 86_400_000) { delete g.tombstones[id]; dirty = true; }
+    }
     if (dirty) { this.rewatch(); this.changed(); }
     return dirty;
   }
 }
+
+const isHex64 = (x: unknown): x is string => typeof x === "string" && /^[0-9a-f]{64}$/.test(x);
+const pubOf = (priv: string) => getPublicKey(hexToBytes(priv));
 
 function validLocation(l: unknown): Location | null {
   const x = l as Location | null;
