@@ -145,6 +145,11 @@ seconds on a phone and the PIN screen looked stuck (found in real-phone testing 
 storage; the protection is the hardware-backed storage plus the stored, enforced waits. Records saved with the old
 setting are re-saved at the next unlock.
 
+**No identifier leaves the app** (0.6.1, VLABS-446). Downloads come from the VelosoLabs app store, which asks for a free
+VelosoLabs account, but the app never asks for one, holds no store, account or install identifier, and opens only fixed
+addresses (`src/core/links.ts`) with no query string. Relays see only gift-wrapped events tagged with a per-contact key
+and an expiry. `tests/privacy.test.ts` and the relay-traffic test in `tests/engine.test.ts` check this.
+
 **Contacts**. At most 50 contacts per phone (owner decision, 2026-11-26).
 
 **Sign-in: exempt from the login standard** (owner decision, 2026-11-26). Pedro's web apps must have

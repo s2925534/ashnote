@@ -593,3 +593,22 @@ test("groups: at most 8 people, and the creator leaving ends the group", async (
   assert.equal(B.e.state.groups![gid].ended, true);
   assert.equal(await B.e.sendGroup(gid, "anyone?"), null);
 });
+
+test("relay traffic carries no store, account or install identifier (VLABS-446)", async () => {
+  const { relay, A, B, a } = await pair();
+  await A.e.send(a.id, "hello");
+  await flush();
+  assert.ok(relay.events.length >= 3);
+  const privs = [A, B].flatMap((p) => Object.values(p.e.state.contacts).map((c) => c.myPriv));
+  const invites = Object.values(A.e.state.invites).map((i) => i.priv).filter((x): x is string => !!x);
+  for (const e of relay.events) {
+    // only the standard event fields; tags are the recipient's per-contact key and the expiry, nothing else
+    assert.deepEqual(Object.keys(e).sort(), ["content", "created_at", "id", "kind", "pubkey", "sig", "tags"]);
+    for (const t of e.tags) assert.ok(t[0] === "p" || t[0] === "expiration", `unexpected tag ${t[0]}`);
+    // and inside the encryption there is no identifier either
+    for (const k of [...privs, ...invites]) {
+      const opened = unwrap(e, k);
+      if (opened) assert.ok(!/velosolabs|account|install|device|email|licen[cs]e|store/i.test(opened.content), opened.content);
+    }
+  }
+});
