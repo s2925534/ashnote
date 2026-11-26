@@ -58,7 +58,7 @@ there as soon as it's released (owner's rule, 2026-11-26), until the VelosoLabs 
 then the download page sends people to the store instead. The APK build (`EXPO_PUBLIC_DIST=apk`)
 also shows a "Support Ashnote" tip link in Settings; the store AAB doesn't, since app stores don't
 allow links to outside payments. Store submissions (App Store,
-Google Play, F-Droid) are owner actions: VLABS-410, VLABS-411, VLABS-412.
+Google Play) are owner actions: VLABS-410, VLABS-411. F-Droid was dropped (owner decision, 2026-11-26).
 
 Secrets: `ASHNOTE_KEYSTORE_BASE64`, `ASHNOTE_KEYSTORE_PASSWORD`, `ASHNOTE_KEY_ALIAS`,
 `ASHNOTE_KEY_PASSWORD`, `HUB_ADMIN_TOKEN`.
