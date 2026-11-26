@@ -8,7 +8,7 @@ appId: com.velosolabs.ashnote
 - takeScreenshot: shots/android-photo-queue
 - tapOn: "Disappearing messages"
 - extendedWaitUntil:
-    visible: "Delete after reading"
+    visible: "Done"
     timeout: 20000
 - waitForAnimationToEnd:
     timeout: 2000
