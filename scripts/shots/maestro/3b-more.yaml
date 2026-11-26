@@ -26,10 +26,14 @@ appId: com.velosolabs.ashnote
     timeout: 2000
 - takeScreenshot: shots/android-help-ask
 - tapOn: "Share location"
-- extendedWaitUntil:
-    visible: "While using the app"
-    timeout: 30000
-- takeScreenshot: shots/android-location-prompt
-- tapOn: "While using the app"
+- waitForAnimationToEnd:
+    timeout: 4000
+# Android asks only the first time; on an emulator that already has the permission, skip
+- runFlow:
+    when:
+      visible: "While using the app"
+    commands:
+      - takeScreenshot: shots/android-location-prompt
+      - tapOn: "While using the app"
 - waitForAnimationToEnd:
     timeout: 4000
