@@ -6,6 +6,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { EngineProvider, useEngine } from "./src/lib/engine";
 import { Chat } from "./src/screens/Chat";
 import { Home } from "./src/screens/Home";
+import { GroupChat, NewGroup } from "./src/screens/Groups";
 import { InviteScreen, ScanScreen, VerifyScreen, sharedInvites, type PairOutcome } from "./src/screens/Pairing";
 import { extractInviteCode } from "./src/core/invite";
 import { aliasFor } from "./src/core/identity";
@@ -23,6 +24,8 @@ type Route =
   | { name: "scan" }
   | { name: "verify"; role: "host" | "guest"; safety: string[]; invitePub?: string; expiresAt: number; outcome: PairOutcome; contactId?: string; remote?: boolean }
   | { name: "chat"; id: string }
+  | { name: "new-group" }
+  | { name: "group"; id: string }
   | { name: "settings" };
 
 function Screens({ theme }: { theme: Theme }) {
@@ -37,7 +40,8 @@ function Screens({ theme }: { theme: Theme }) {
   useEffect(() => {
     let handled = false;
     for (const n of notices) {
-      if (n.type === "message") playSound("message");
+      if (n.type === "message" || n.type === "group-message") playSound("message");
+      if (n.type === "group-added") { playSound("paired"); setToast("You were added to a group. Find it under Groups."); handled = true; }
       if (n.type === "paired") playSound("paired");
       if (n.type === "pair-expired" || n.type === "invite-expired") playSound("expired");
       if (n.type === "alert") playSound(n.level === "sos" ? "sos" : "help");
@@ -57,7 +61,7 @@ function Screens({ theme }: { theme: Theme }) {
       if (n.type === "rejected") { setRoute({ name: "home" }); setToast("The other phone rejected the pairing."); handled = true; }
       if (n.type === "invite-expired" && route.name === "invite") { setRoute({ name: "home" }); setToast("Your invite code expired. Show a new one."); handled = true; }
     }
-    if (handled || (notices.length && route.name !== "chat")) clearNotices();
+    if (handled || (notices.length && route.name !== "chat" && route.name !== "group")) clearNotices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notices]);
 
@@ -81,7 +85,8 @@ function Screens({ theme }: { theme: Theme }) {
     <View style={styles.fill}>
       {route.name === "home" && (
         <Home theme={theme} onInvite={() => setRoute({ name: "invite" })} onScan={() => setRoute({ name: "scan" })}
-          onOpen={(id) => setRoute({ name: "chat", id })} onToast={setToast} onSettings={() => setRoute({ name: "settings" })} />
+          onOpen={(id) => setRoute({ name: "chat", id })} onOpenGroup={(id) => setRoute({ name: "group", id })}
+          onNewGroup={() => setRoute({ name: "new-group" })} onToast={setToast} onSettings={() => setRoute({ name: "settings" })} />
       )}
       {route.name === "invite" && <InviteScreen theme={theme} onCancel={home} />}
       {route.name === "scan" && (
@@ -98,6 +103,8 @@ function Screens({ theme }: { theme: Theme }) {
       )}
       {route.name === "settings" && <Settings theme={theme} onBack={home} />}
       {route.name === "chat" && <Chat theme={theme} contactId={route.id} onBack={home} />}
+      {route.name === "new-group" && <NewGroup theme={theme} onCancel={home} onCreated={(id) => setRoute({ name: "group", id })} />}
+      {route.name === "group" && <GroupChat theme={theme} groupId={route.id} onBack={home} />}
       {alertFor && (() => {
         const c = engine.state.contacts[alertFor.contactId];
         const m = c?.messages.find((x) => x.id === alertFor.msgId);

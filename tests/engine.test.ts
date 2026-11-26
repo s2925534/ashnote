@@ -500,3 +500,96 @@ test("engine: paired phones move to the double ratchet as they chat", async () =
   assert.ok(B.e.state.contacts[b.id].messages.some((m) => m.text === "ping 2"));
   assert.ok(A.e.state.contacts[a.id].messages.some((m) => m.text === "pong 2"));
 });
+
+test("a phone holds at most 50 contacts; new pairings are refused until one is removed", async () => {
+  const relay = new FakeRelay();
+  const A = phone(relay);
+  for (let i = 0; i < 50; i++) {
+    const k = newKeyPair();
+    A.e.state.contacts["c" + i] = { id: "c" + i, myPriv: k.priv, myPub: k.pub, theirPub: newKeyPair().pub } as never;
+  }
+  assert.equal(A.e.isFull(), true);
+  assert.throws(() => A.e.createInvite(), /50 contacts/);
+  const B = phone(relay);
+  const { code } = B.e.createInvite();
+  const r = await A.e.scan(code);
+  assert.equal(r.ok, false);
+  A.e.removeContact("c0");
+  assert.equal(A.e.isFull(), false);
+  assert.equal((await A.e.scan(code)).ok, true);
+});
+
+// ---------- group chats (VLABS-427) ----------
+async function trio() {
+  const relay = new FakeRelay();
+  const A = phone(relay), B = phone(relay), C = phone(relay);
+  const link = async (X: ReturnType<typeof phone>, Y: ReturnType<typeof phone>) => {
+    const { code, invite } = X.e.createInvite();
+    await Y.e.scan(code); await flush();
+    await X.e.acceptRequest(invite.pub); await flush();
+  };
+  await link(A, B); await link(A, C);
+  const ids = Object.keys(A.e.state.contacts);
+  assert.equal(ids.length, 2);
+  return { relay, A, B, C, ids };
+}
+const settle = async () => { for (let i = 0; i < 6; i++) await flush(); };
+
+test("groups: the creator invites contacts, everyone joins and every member reads every message", async () => {
+  const { A, B, C, ids } = await trio();
+  const gid = (await A.e.createGroup(ids))!;
+  assert.ok(gid);
+  await settle();
+  const gb = B.e.state.groups![gid], gc = C.e.state.groups![gid], ga = A.e.state.groups![gid];
+  assert.ok(gb && gc, "both contacts were added");
+  assert.equal(ga.members.length, 3);
+  assert.equal(gb.members.length, 3, "the creator's roster reached B");
+  await B.e.sendGroup(gid, "hello group from B"); await settle();
+  assert.ok(A.e.state.groups![gid].messages.some((m) => m.text === "hello group from B"));
+  assert.ok(C.e.state.groups![gid].messages.some((m) => m.text === "hello group from B" && m.from === gb.me.pub),
+    "C reads B's message although B and C never paired");
+  const m = C.e.state.groups![gid].messages[0];
+  C.e.markGroupRead(gid, m.id);
+  assert.ok(C.e.state.groups![gid].messages[0].expiresAt, "the timer runs once read");
+  clock += 6 * 60_000; C.e.tick();
+  assert.equal(C.e.state.groups![gid].messages.length, 0, "deleted after the timer");
+});
+
+test("groups: double-tap deletes my message everywhere; a non-member can't post", async () => {
+  const { A, B, C, ids, relay } = await trio();
+  const gid = (await A.e.createGroup(ids))!; await settle();
+  const sent = (await A.e.sendGroup(gid, "oops"))!; await settle();
+  assert.ok(B.e.state.groups![gid].messages.some((m) => m.id === sent.id));
+  await A.e.deleteGroupNow(gid, sent.id); await settle();
+  assert.ok(!B.e.state.groups![gid].messages.some((m) => m.id === sent.id));
+  assert.ok(!C.e.state.groups![gid].messages.some((m) => m.id === sent.id));
+  // someone who learned the group key but isn't on the roster
+  const outsider = newKeyPair();
+  const g = A.e.state.groups![gid];
+  relay.publish(wrap(outsider.priv, g.gpub, JSON.stringify({ t: "gmsg", id: "x1", text: "spoof", ttl: 0, at: clock }), clock, clock + 60_000));
+  await settle();
+  assert.ok(!B.e.state.groups![gid].messages.some((m) => m.text === "spoof"));
+});
+
+test("groups: when a member leaves, the creator replaces the key and the leaver can't read on", async () => {
+  const { A, B, C, ids } = await trio();
+  const gid = (await A.e.createGroup(ids))!; await settle();
+  const oldPriv = C.e.state.groups![gid].gpriv;
+  await C.e.leaveGroup(gid); await settle();
+  assert.equal(C.e.state.groups![gid], undefined);
+  assert.notEqual(A.e.state.groups![gid].gpriv, oldPriv, "new group key");
+  assert.equal(B.e.state.groups![gid].gpriv, A.e.state.groups![gid].gpriv, "B got the new key");
+  assert.equal(A.e.state.groups![gid].members.length, 2);
+  await A.e.sendGroup(gid, "after C left"); await settle();
+  assert.ok(B.e.state.groups![gid].messages.some((m) => m.text === "after C left"));
+});
+
+test("groups: at most 8 people, and the creator leaving ends the group", async () => {
+  const { A, B, ids } = await trio();
+  assert.equal(await A.e.createGroup(Array.from({ length: 8 }, (_, i) => ids[i % 2] + i)), null, "only real contacts");
+  assert.equal(await A.e.createGroup([]), null);
+  const gid = (await A.e.createGroup(ids))!; await settle();
+  await A.e.leaveGroup(gid); await settle();
+  assert.equal(B.e.state.groups![gid].ended, true);
+  assert.equal(await B.e.sendGroup(gid, "anyone?"), null);
+});
