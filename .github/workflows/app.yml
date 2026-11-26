@@ -71,9 +71,21 @@ jobs:
         # The APK people download is built for phone processors only (32- and 64-bit ARM), which
         # keeps it under the 100 MB upload limit in front of velosolabs.com; the x86 builds only run
         # on emulators. The AAB keeps every processor type: Google Play splits it per device.
+        # The AAB (for the app stores) is built first, with no tip link. The APK (our own download)
+        # is then built with EXPO_PUBLIC_DIST=apk, which shows "Support Ashnote" in Settings; app
+        # stores don't allow links to outside payments. Its JS bundle is made again for that.
         run: |
-          ./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
           ./gradlew --no-daemon bundleRelease
+          rm -rf app/build/generated/assets/react app/build/generated/res/react
+          EXPO_PUBLIC_DIST=apk ./gradlew --no-daemon assembleRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a
+      - name: Check the tip link is only in the APK
+        run: |
+          has() { unzip -p "$1" '*index.android.bundle' | grep -a -c "ashnote/support" || true; }
+          APK=$(has android/app/build/outputs/apk/release/app-release.apk)
+          AAB=$(has android/app/build/outputs/bundle/release/app-release.aab)
+          echo "tip link: apk=$APK aab=$AAB"
+          if [ "$APK" = "0" ]; then echo "::error::The APK is missing the Support Ashnote link"; exit 1; fi
+          if [ "$AAB" != "0" ]; then echo "::error::The store AAB must not link to outside payments"; exit 1; fi
       - name: Collect files
         run: |
           VERSION=$(node -p "require('./app.json').expo.version")

@@ -53,7 +53,11 @@ the scan screen takes pasted code text).
 
 CI (`.github/workflows/app.yml`) runs the tests on every push. A tag `vX.Y.Z` (matching
 `app.json`) or a manual run builds the signed APK and AAB, attaches them to a private GitHub
-Release, and publishes the APK to velosolabs.com/ashnote/download. Store submissions (App Store,
+Release, and publishes the APK to velosolabs.com/ashnote/download. Every new version goes up
+there as soon as it's released (owner's rule, 2026-11-26), until the VelosoLabs app store is ready:
+then the download page sends people to the store instead. The APK build (`EXPO_PUBLIC_DIST=apk`)
+also shows a "Support Ashnote" tip link in Settings; the store AAB doesn't, since app stores don't
+allow links to outside payments. Store submissions (App Store,
 Google Play, F-Droid) are owner actions: VLABS-410, VLABS-411, VLABS-412.
 
 Secrets: `ASHNOTE_KEYSTORE_BASE64`, `ASHNOTE_KEYSTORE_PASSWORD`, `ASHNOTE_KEY_ALIAS`,

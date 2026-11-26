@@ -65,6 +65,17 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
             : ""}
         </Text>
         <Button label="Get the latest version" theme={theme} onPress={() => Linking.openURL("https://velosolabs.com/ashnote/download")} />
+
+        {process.env.EXPO_PUBLIC_DIST === "apk" && (
+          <>
+            <Text style={[styles.h, { color: theme.ink }]}>Support Ashnote</Text>
+            <Text style={[styles.hint, { color: theme.muted }]}>
+              Ashnote is free, with no ads and no tracking. If it's useful to you, you can leave a one-off tip on velosolabs.com.
+              It doesn't unlock anything, and nothing about your chats or contacts is sent.
+            </Text>
+            <Button label="Leave a tip" theme={theme} onPress={() => Linking.openURL("https://velosolabs.com/ashnote/support")} />
+          </>
+        )}
       </ScrollView>
     </View>
   );
