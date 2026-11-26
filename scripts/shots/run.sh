@@ -42,6 +42,8 @@ echo "photo 2" >> peer-commands.txt
 flow 3b-more
 echo "sos" >> peer-commands.txt
 flow 4-rest
+echo "gmsg Groups work like chats: one message at a time, with who sent it." >> peer-commands.txt
+flow 5-groups
 cat peer.log
 # Maestro saves takeScreenshot paths next to the flow file; gather them into ./shots
 collect
