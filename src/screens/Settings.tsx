@@ -3,7 +3,8 @@ import Constants from "expo-constants";
 import { Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { DEFAULT_PREFS, SOUNDS, loadSoundPrefs, playSound, setSoundPref, type SoundPrefs } from "../lib/sounds";
 import { loadPrefs, setReplyClears } from "../lib/prefs";
-import { biometricsAvailable, biometricsOn, setBiometrics } from "../lib/lock";
+import { biometricsAvailable, biometricsOn, lockEvents, setBiometrics } from "../lib/lock";
+import { LOCK_EVENT_LABELS, type LockEvent } from "../core/pinlock";
 import { LockScreen } from "./Lock";
 import { Button, ColorModeButton, IconButton } from "../ui/kit";
 import { useThemeMode, type Theme } from "../ui/theme";
@@ -15,13 +16,14 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
   const [bioAvail, setBioAvail] = useState(false);
   const [bio, setBio] = useState(false);
   const [changingPin, setChangingPin] = useState(false);
+  const [events, setEvents] = useState<LockEvent[]>([]);
   const lockOn = Platform.OS !== "web" && process.env.EXPO_PUBLIC_SCREENSHOT_MODE !== "1";
   useEffect(() => {
     loadSoundPrefs().then(setPrefs); loadPrefs().then((p) => setRC(p.replyClears));
-    if (lockOn) { biometricsAvailable().then(setBioAvail); biometricsOn().then(setBio); }
+    if (lockOn) { biometricsAvailable().then(setBioAvail); biometricsOn().then(setBio); lockEvents().then(setEvents); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  if (changingPin) return <LockScreen theme={theme} initial="set" onUnlocked={() => setChangingPin(false)} />;
+  if (changingPin) return <LockScreen theme={theme} initial="set" onUnlocked={() => { setChangingPin(false); lockEvents().then(setEvents); }} />;
   return (
     <View style={styles.fill}>
       <View style={[styles.head, { borderColor: theme.line }]}>
@@ -82,6 +84,21 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
               </View>
             )}
             <Button label="Change PIN" theme={theme} onPress={() => setChangingPin(true)} />
+            {events.length > 0 && (
+              <View accessibilityLabel="Recent lock events">
+                <View style={[styles.row, { borderColor: theme.line }]}>
+                  <Text style={[styles.hint, { color: theme.muted, flex: 1, fontWeight: "700" }]}>LOCK EVENT</Text>
+                  <Text style={[styles.hint, { color: theme.muted, fontWeight: "700" }]}>WHEN</Text>
+                </View>
+                {events.slice(0, 10).map((e) => (
+                  <View key={`${e.at}-${e.kind}`} style={[styles.row, { borderColor: theme.line }]}>
+                    <Text style={[styles.hint, { color: theme.ink, flex: 1 }]}>{LOCK_EVENT_LABELS[e.kind] ?? e.kind}</Text>
+                    <Text style={[styles.hint, { color: theme.muted }]}>{new Date(e.at).toLocaleString()}</Text>
+                  </View>
+                ))}
+                <Text style={[styles.hint, { color: theme.muted }]}>Kept only on this phone, so you can see if someone reset the lock.</Text>
+              </View>
+            )}
           </>
         )}
 

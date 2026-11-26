@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FREE_TRIES, MAX_WAIT_MS, makeRecord, tryPin, validPin, waitAfter } from "../src/core/pinlock";
+import { FREE_TRIES, MAX_LOCK_EVENTS, MAX_WAIT_MS, addLockEvent, makeRecord, tryPin, validPin, waitAfter, type LockEvent } from "../src/core/pinlock";
 
 const salt = new Uint8Array(16).fill(7);
 const FAST = 1000; // fewer iterations to keep the tests quick
@@ -49,4 +49,13 @@ test("wrong tries count down, then waits grow and are enforced", async () => {
 test("waits follow the standard: 30 s, 1 min, 5 min, then 15 min each", () => {
   assert.equal(waitAfter(FREE_TRIES - 1), 0);
   assert.equal(waitAfter(50), MAX_WAIT_MS);
+});
+
+test("lock events are kept newest first, at most MAX_LOCK_EVENTS", () => {
+  let list: LockEvent[] = [];
+  for (let i = 0; i < MAX_LOCK_EVENTS + 5; i++) list = addLockEvent(list, { at: i, kind: "wait-started" });
+  list = addLockEvent(list, { at: 999, kind: "phone-owner-reset" });
+  assert.equal(list.length, MAX_LOCK_EVENTS);
+  assert.equal(list[0].kind, "phone-owner-reset");
+  assert.equal(list[1].at, MAX_LOCK_EVENTS + 4);
 });
