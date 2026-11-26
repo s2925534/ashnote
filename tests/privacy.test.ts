@@ -5,6 +5,10 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { test } from "node:test";
 import { INVITE_LINK_BASE, LATEST_VERSION_URL, TIP_URL } from "../src/core/links";
+
+test("the tip address is only in the APK build; store builds leave it out", () => {
+  assert.equal(TIP_URL, process.env.EXPO_PUBLIC_DIST === "apk" ? "https://velosolabs.com/ashnote/support" : null);
+});
 import { createInvite, encodeInvite, extractInviteCode, inviteLink } from "../src/core/invite";
 
 const ROOT = join(__dirname, "..");
@@ -34,7 +38,7 @@ test("every web address in the code is one of the fixed links (or a map of a sha
   for (const f of SOURCES) {
     if (/https?:\/\//.test(code(f.text))) assert.ok(allowed.has(f.path), `${f.path} has a web address of its own`);
   }
-  for (const url of [INVITE_LINK_BASE, LATEST_VERSION_URL, TIP_URL]) {
+  for (const url of [INVITE_LINK_BASE, LATEST_VERSION_URL, "https://velosolabs.com/ashnote/support"]) {
     const u = new URL(url);
     assert.equal(u.protocol, "https:");
     assert.equal(u.search, "", `${url} has a query string`);
@@ -44,7 +48,7 @@ test("every web address in the code is one of the fixed links (or a map of a sha
   for (const f of SOURCES) {
     for (const m of code(f.text).matchAll(/openURL\(([^)]*)\)/g)) {
       const arg = m[1].trim();
-      const ok = /^(LATEST_VERSION_URL|TIP_URL)$/.test(arg) || (f.path === "src/lib/maps.ts");
+      const ok = /^(LATEST_VERSION_URL|TIP_URL!?)$/.test(arg) || (f.path === "src/lib/maps.ts");
       assert.ok(ok, `${f.path} opens ${arg}`);
     }
   }

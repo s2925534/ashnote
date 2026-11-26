@@ -4,5 +4,8 @@
 export { INVITE_LINK_BASE } from "./invite";
 /** "Get the latest version": the Ashnote page in the VelosoLabs app store. */
 export const LATEST_VERSION_URL = "https://apps.velosolabs.com/ashnote";
-/** "Leave a tip" (APK build only). */
-export const TIP_URL = "https://velosolabs.com/ashnote/support";
+/**
+ * "Leave a tip": only in the APK we publish ourselves. App stores don't allow links to outside payments, so in
+ * the store build this is null and the address is left out of the app entirely (the release workflow checks).
+ */
+export const TIP_URL: string | null = process.env.EXPO_PUBLIC_DIST === "apk" ? "https://velosolabs.com/ashnote/support" : null;
