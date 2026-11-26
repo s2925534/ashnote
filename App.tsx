@@ -136,9 +136,9 @@ export default function App() {
 }
 
 // The app lock (VLABS-459) runs before the encrypted store is opened and the engine starts: until
-// the PIN (or biometrics) unlocks it, nothing is loaded. Web previews and the documentation
-// screenshot build skip it.
-const LOCK_OFF = Platform.OS === "web" || process.env.EXPO_PUBLIC_SCREENSHOT_MODE === "1";
+// the PIN (or biometrics) unlocks it, nothing is loaded. Web previews skip it. The documentation
+// screenshot build keeps it, so the emulator flow sets and enters a PIN like a real phone would.
+const LOCK_OFF = Platform.OS === "web";
 type LockState = "loading" | "set" | "unlock" | "open";
 
 function Root() {

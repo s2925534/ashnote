@@ -4,7 +4,7 @@
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
 import { getRandomValues } from "expo-crypto";
-import { addLockEvent, makeRecord, tryPin, type LockEvent, type LockEventKind, type PinRecord, type TryResult } from "../core/pinlock";
+import { PIN_ITERATIONS, addLockEvent, makeRecord, tryPin, type LockEvent, type LockEventKind, type PinRecord, type TryResult } from "../core/pinlock";
 import { eraseAll } from "./storage";
 
 const PIN_KEY = "ashnote.pin.v1";
@@ -38,7 +38,10 @@ export async function checkPin(pin: string): Promise<TryResult | null> {
   const rec = await loadPin();
   if (!rec) return null;
   const r = await tryPin(rec, pin, Date.now());
-  await SecureStore.setItemAsync(PIN_KEY, JSON.stringify(r.record), opts);
+  let toSave = r.record;
+  // a PIN saved with the old, slower setting (or before its length was kept) is re-saved now
+  if (r.ok && (rec.iterations !== PIN_ITERATIONS || !rec.len)) toSave = await makeRecord(pin, getRandomValues(new Uint8Array(16)));
+  await SecureStore.setItemAsync(PIN_KEY, JSON.stringify(toSave), opts);
   if (!r.ok && r.waitMs && r.record.waitUntil !== rec.waitUntil) await recordLockEvent("wait-started");
   return r;
 }

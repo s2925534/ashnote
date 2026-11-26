@@ -1,0 +1,47 @@
+appId: com.velosolabs.ashnote
+---
+# First run: choose a 4-digit PIN. It moves on by itself after the 4th digit (no ✓ needed), then
+# asks for it again and opens Ashnote. This is the flow that hung on a real phone before 0.5.3.
+# a fresh install (clearState would also reset the permissions run.sh grants)
+- launchApp
+- extendedWaitUntil:
+    visible: "Choose a PIN"
+    timeout: 45000
+- tapOn: "2"
+- tapOn: "4"
+- waitForAnimationToEnd:
+    timeout: 1000
+- takeScreenshot: shots/android-lock-set
+- tapOn: "6"
+- tapOn: "8"
+- extendedWaitUntil:
+    visible: "Enter the PIN again"
+    timeout: 10000
+- tapOn: "2"
+- tapOn: "4"
+- tapOn: "6"
+- tapOn: "8"
+- extendedWaitUntil:
+    visible: "Show invite code"
+    timeout: 20000
+# Open again: the lock asks for the PIN. One wrong try shows the countdown to a wait.
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Enter your PIN"
+    timeout: 30000
+- tapOn: "1"
+- tapOn: "1"
+- tapOn: "1"
+- tapOn: "1"
+- extendedWaitUntil:
+    visible: "Wrong PIN.*"
+    timeout: 10000
+- takeScreenshot: shots/android-lock-unlock
+- tapOn: "2"
+- tapOn: "4"
+- tapOn: "6"
+- tapOn: "8"
+- extendedWaitUntil:
+    visible: "Show invite code"
+    timeout: 20000

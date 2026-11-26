@@ -17,7 +17,7 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
   const [bio, setBio] = useState(false);
   const [changingPin, setChangingPin] = useState(false);
   const [events, setEvents] = useState<LockEvent[]>([]);
-  const lockOn = Platform.OS !== "web" && process.env.EXPO_PUBLIC_SCREENSHOT_MODE !== "1";
+  const lockOn = Platform.OS !== "web";
   useEffect(() => {
     loadSoundPrefs().then(setPrefs); loadPrefs().then((p) => setRC(p.replyClears));
     if (lockOn) { biometricsAvailable().then(setBioAvail); biometricsOn().then(setBio); lockEvents().then(setEvents); }

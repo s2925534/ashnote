@@ -2,8 +2,8 @@
 // Forgot PIN: the phone's own owner check (fingerprint, face or passcode) lets you choose a new
 // PIN; otherwise Reset Ashnote deletes everything on this phone. Nothing goes to a server.
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { PIN_MAX, PIN_MIN, describeWait, validPin } from "../core/pinlock";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { PIN_DEFAULT_LENGTH, PIN_MAX, PIN_MIN, describeWait, validPin } from "../core/pinlock";
 import {
   biometricsOn, checkPin, confirmPhoneOwner, deviceLockAvailable, loadPin, resetApp, setPin, unlockWithBiometrics,
 } from "../lib/lock";
@@ -24,6 +24,8 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
   const [canOwner, setCanOwner] = useState(false);
   const [bio, setBio] = useState(false);
   const [viaOwner, setViaOwner] = useState(false);
+  const [longer, setLonger] = useState(false);       // choosing a PIN longer than 4 digits
+  const [savedLen, setSavedLen] = useState<number | undefined>(undefined); // the stored PIN's length, to check it as soon as it's typed
 
   useEffect(() => {
     deviceLockAvailable().then(setCanOwner);
@@ -33,25 +35,42 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
         if (on) unlockWithBiometrics().then((ok) => ok && onUnlocked()).catch(() => {});
       });
       // show a running wait straight away
-      loadPin().then((r) => { if (r && r.waitUntil > Date.now()) setMsg(`Too many wrong tries. Wait ${describeWait(r.waitUntil - Date.now())}.`); });
+      loadPin().then((r) => {
+        setSavedLen(r?.len);
+        if (r && r.waitUntil > Date.now()) setMsg(`Too many wrong tries. Wait ${describeWait(r.waitUntil - Date.now())}.`);
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const title = stage === "unlock" ? "Enter your PIN" : stage === "set" ? "Choose a PIN" : "Enter the PIN again";
-  const hint = stage === "unlock" ? "Ashnote is locked." :
-    `${PIN_MIN} to ${PIN_MAX} digits. Only this phone knows it, and it can't be recovered from anywhere else.`;
+  const hint = stage === "unlock" ? "Ashnote is locked." : stage === "confirm" ? "Type the same PIN to make sure." :
+    longer ? `${PIN_MIN + 2} to ${PIN_MAX} digits, then tap ✓. Only this phone knows it.`
+      : `${PIN_DEFAULT_LENGTH} digits. Only this phone knows it.`;
+  // how many digits fill the PIN: then it moves on by itself (otherwise ✓ is needed)
+  const target = stage === "set" ? (longer ? 0 : PIN_DEFAULT_LENGTH) : stage === "confirm" ? first.length : (savedLen ?? 0);
+  const maxLen = stage === "set" && !longer ? PIN_DEFAULT_LENGTH : stage === "confirm" ? first.length : PIN_MAX;
 
-  const submit = async () => {
+  const submit = async (value: string = entry) => {
     if (busy) return;
-    if (!validPin(entry)) { setMsg(`Use ${PIN_MIN} to ${PIN_MAX} digits.`); return; }
-    if (stage === "set") { setFirst(entry); setEntry(""); setMsg(""); setStage("confirm"); return; }
-    if (stage === "confirm") {
-      if (entry !== first) { setEntry(""); setFirst(""); setStage("set"); setMsg("The PINs didn't match. Choose one again."); return; }
-      setBusy(true); await setPin(entry, viaOwner ? "phone-owner-reset" : undefined); setBusy(false); onUnlocked(); return;
+    if (!validPin(value) || (stage === "set" && longer && value.length < PIN_MIN + 2)) {
+      setMsg(stage === "set" && longer ? `Use ${PIN_MIN + 2} to ${PIN_MAX} digits.` : `Use at least ${PIN_MIN} digits.`); return;
     }
-    setBusy(true);
-    const r = await checkPin(entry);
+    if (stage === "set") { setFirst(value); setEntry(""); setMsg(""); setStage("confirm"); return; }
+    if (stage === "confirm") {
+      if (value !== first) { setEntry(""); setFirst(""); setStage("set"); setMsg("The PINs didn't match. Choose one again."); return; }
+      setBusy(true); setMsg("");
+      try {
+        await setPin(value, viaOwner ? "phone-owner-reset" : undefined);
+        onUnlocked();
+      } catch {
+        setEntry(""); setFirst(""); setStage("set"); setMsg("Couldn't save the PIN. Please choose it again.");
+      } finally { setBusy(false); }
+      return;
+    }
+    setBusy(true); setMsg("");
+    let r: Awaited<ReturnType<typeof checkPin>> = null;
+    try { r = await checkPin(value); } catch { setMsg("Couldn't check the PIN. Please try again."); setBusy(false); setEntry(""); return; }
     setBusy(false);
     setEntry("");
     if (!r || r.ok) { onUnlocked(); return; }
@@ -60,9 +79,13 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
   };
 
   const press = (k: string) => {
+    if (busy) return;
     if (k === "del") { setEntry((e) => e.slice(0, -1)); return; }
     if (k === "ok") { void submit(); return; }
-    setEntry((e) => (e.length < PIN_MAX ? e + k : e));
+    if (entry.length >= maxLen) return;
+    const next = entry + k;
+    setEntry(next);
+    if (target && next.length === target) void submit(next); // filled: move on without ✓
   };
 
   const ownerCheck = async () => {
@@ -82,11 +105,18 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
       <Text accessibilityRole="header" style={[styles.title, { color: theme.ink }]}>{title}</Text>
       <Text style={[styles.hint, { color: theme.muted }]}>{hint}</Text>
       <View style={styles.dots} accessibilityLabel={`${entry.length} digits entered`}>
-        {Array.from({ length: Math.max(PIN_MIN, entry.length) }, (_, i) => (
+        {Array.from({ length: Math.max(target || PIN_MIN, entry.length) }, (_, i) => (
           <View key={i} style={[styles.dot, { borderColor: theme.muted }, i < entry.length && { backgroundColor: theme.accent, borderColor: theme.accent }]} />
         ))}
       </View>
-      <Text accessibilityLiveRegion="polite" style={[styles.msg, { color: theme.danger }]}>{msg}</Text>
+      {busy ? (
+        <View style={styles.busy} accessibilityLiveRegion="polite">
+          <ActivityIndicator color={theme.accent} />
+          <Text style={{ color: theme.muted, fontSize: 13 }}>{stage === "unlock" ? "Checking…" : "Saving…"}</Text>
+        </View>
+      ) : (
+        <Text accessibilityLiveRegion="polite" style={[styles.msg, { color: theme.danger }]}>{msg}</Text>
+      )}
       <View style={styles.pad}>
         {["1", "2", "3", "4", "5", "6", "7", "8", "9", "del", "0", "ok"].map((k) => (
           <Pressable key={k} onPress={() => press(k)} accessibilityRole="button"
@@ -96,6 +126,13 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
           </Pressable>
         ))}
       </View>
+      {stage === "set" && (
+        <View style={styles.links}>
+          <Text accessibilityRole="button" onPress={() => { setLonger((l) => !l); setEntry(""); setMsg(""); }} style={[styles.link, { color: theme.accent }]}>
+            {longer ? `Use ${PIN_DEFAULT_LENGTH} digits` : "Use a longer PIN"}
+          </Text>
+        </View>
+      )}
       {stage === "unlock" && (
         <View style={styles.links}>
           {bio && <Text accessibilityRole="button" onPress={() => unlockWithBiometrics().then((ok) => ok && onUnlocked())} style={[styles.link, { color: theme.accent }]}>Use fingerprint or face</Text>}
@@ -134,6 +171,7 @@ const styles = StyleSheet.create({
   dots: { flexDirection: "row", gap: 12, minHeight: 16, marginTop: 6 },
   dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
   msg: { fontSize: 13, minHeight: 18, textAlign: "center" },
+  busy: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18 },
   pad: { flexDirection: "row", flexWrap: "wrap", width: 252, gap: 12, justifyContent: "center" },
   key: { width: 72, height: 58, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   keyText: { fontSize: 22, fontWeight: "600" },
