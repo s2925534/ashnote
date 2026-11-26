@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write   # the store accepts this workflow's OIDC token to set release notes (scripts/store-notes.sh)
 
 jobs:
   test:
@@ -126,3 +127,8 @@ jobs:
             -H "Authorization: Bearer $TOKEN" \
             --form-string "version=$VERSION" --form-string "changelog=$(cat "release-notes/$VERSION.md")" \
             -F "file=@dist/ashnote-$VERSION.apk"
+
+      - name: Release notes on the VelosoLabs store
+        if: steps.sign.outputs.signed == 'true'
+        # fills any empty store notes (this release, and older ones) from release-notes/; never fails the release
+        run: bash scripts/store-notes.sh || echo "::warning::could not set the store release notes"

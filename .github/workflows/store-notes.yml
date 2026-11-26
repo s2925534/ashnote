@@ -1,0 +1,14 @@
+name: store-notes
+# Fills in empty release notes on the VelosoLabs store from release-notes/<version>.md.
+# The release workflow (app.yml) does the same after each upload; run this by hand to backfill.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/store-notes.sh
