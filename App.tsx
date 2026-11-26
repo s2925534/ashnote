@@ -16,7 +16,7 @@ import { Settings } from "./src/screens/Settings";
 import { loadSoundPrefs, playSound } from "./src/lib/sounds";
 import { loadPrefs } from "./src/lib/prefs";
 import { ThemeModeContext, isDark, useTheme, type Theme, type ThemeMode } from "./src/ui/theme";
-import { loadSetting, saveSetting } from "./src/lib/storage";
+import { loadDeviceSetting, loadSetting, lockDatabase, saveDeviceSetting } from "./src/lib/storage";
 import { loadPin } from "./src/lib/lock";
 import { RELOCK_AFTER_MS } from "./src/core/pinlock";
 import { LockScreen } from "./src/screens/Lock";
@@ -125,9 +125,14 @@ function Screens({ theme }: { theme: Theme }) {
 export default function App() {
   const [mode, setModeState] = useState<ThemeMode>("system");
   useEffect(() => {
-    loadSetting("colorMode").then((m) => { if (m === "light" || m === "dark" || m === "system") setModeState(m); }).catch(() => {});
+    const apply = (m: string | null) => { if (m === "light" || m === "dark" || m === "system") { setModeState(m); return true; } return false; };
+    // kept outside the encrypted database so the lock screen can use it; 0.5.3 and earlier kept it inside,
+    // so that copy is read once after the first unlock
+    loadDeviceSetting("colorMode").then((m) => {
+      if (!apply(m)) loadSetting("colorMode").then((old) => { if (apply(old) && old) saveDeviceSetting("colorMode", old); }).catch(() => {});
+    }).catch(() => {});
   }, []);
-  const setMode = (m: ThemeMode) => { setModeState(m); saveSetting("colorMode", m).catch(() => {}); };
+  const setMode = (m: ThemeMode) => { setModeState(m); saveDeviceSetting("colorMode", m); };
   return (
     <ThemeModeContext.Provider value={{ mode, setMode }}>
       <Root />
@@ -136,7 +141,7 @@ export default function App() {
 }
 
 // The app lock (VLABS-459) runs before the encrypted store is opened and the engine starts: until
-// the PIN (or biometrics) unlocks it, nothing is loaded. Web previews skip it. The documentation
+// the PIN (or the phone owner check) releases the database key (VLABS-464), nothing can be loaded. Web previews skip it. The documentation
 // screenshot build keeps it, so the emulator flow sets and enters a PIN like a real phone would.
 const LOCK_OFF = Platform.OS === "web";
 type LockState = "loading" | "set" | "unlock" | "open";
@@ -153,7 +158,12 @@ function Root() {
       if (s === "background") away = Date.now();
       else if (s === "active" && away && Date.now() - away > RELOCK_AFTER_MS) {
         away = 0;
-        loadPin().then((r) => { if (r) setLock("unlock"); }).catch(() => {});
+        loadPin().then((r) => {
+          if (!r) return;
+          setLock("unlock");
+          // once the engine has stopped, close the database and forget its key until the next unlock
+          setTimeout(lockDatabase, 0);
+        }).catch(() => {});
       }
     });
     return () => sub.remove();

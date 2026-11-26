@@ -68,3 +68,32 @@ test("a PIN record remembers its length, and hashing stays fast enough for a pho
   await makeRecord("246813", salt);
   assert.ok(Date.now() - t < 2000);
 });
+
+const KEY = "ab".repeat(32);
+const NONCE = new Uint8Array(12).fill(3);
+
+test("a v2 record seals the database key: only the right PIN releases it", async () => {
+  const r = await makeRecord("2468", salt, FAST, KEY, NONCE);
+  assert.equal(r.v, 2);
+  assert.ok(r.wrapped && !r.wrapped.includes(KEY), "the key is never stored in the clear");
+  const ok = await tryPin(r, "2468", 0);
+  assert.ok(ok.ok && ok.dbKey === KEY);
+  const bad = await tryPin(r, "1357", 0);
+  assert.ok(!bad.ok && !("dbKey" in bad));
+});
+
+test("the check value doesn't reveal the wrapping key, and a tampered seal gives no key", async () => {
+  const r = await makeRecord("2468", salt, FAST, KEY, NONCE);
+  const v1 = await makeRecord("2468", salt, FAST);
+  assert.notEqual(r.hash, v1.hash); // v2 keeps a derived check value, not the master secret
+  const flip = r.wrapped!.slice(0, -2) + (r.wrapped!.endsWith("00") ? "01" : "00");
+  const t = await tryPin({ ...r, wrapped: flip }, "2468", 0);
+  assert.ok(t.ok && t.dbKey === undefined);
+});
+
+test("v1 records from 0.5.0 to 0.5.3 still unlock (and carry no key)", async () => {
+  const r = await makeRecord("2468", salt, FAST);
+  assert.equal(r.v, 1);
+  const t = await tryPin(r, "2468", 0);
+  assert.ok(t.ok && t.dbKey === undefined);
+});

@@ -107,15 +107,43 @@ unlock. Forgot PIN: the phone's own owner check (biometrics or its passcode) let
 the phone has no screen lock, or you can't pass it, Reset Ashnote deletes the database contents, the PIN
 and the settings. There is no account, so nothing is recoverable from a server. Every lock event (PIN chosen or changed, a
 phone-owner reset, an Ashnote reset, a wait starting) is recorded on the phone only (secure storage,
-last 50, kept across a reset) and listed in Settings > App lock (0.5.2). Limitation: the database
-key is held by the phone's secure storage, not derived from the PIN, so the PIN guards the app's screens
-rather than adding a second layer of encryption.
+last 50, kept across a reset) and listed in Settings > App lock (0.5.2).
+
+**The lock releases the database key** (0.6.0, VLABS-464). Until 0.5.3 the SQLCipher key sat in secure storage
+on its own, so the PIN only guarded the screens. From 0.6.0 the key is stored only in two sealed forms, and the
+database can't be opened until one of them is opened:
+- *By the PIN:* the PBKDF2 output is a master secret kept only in memory. HKDF-SHA256 derives a check value
+  (stored, to count wrong tries) and a wrapping key. The database key is sealed with AES-256-GCM under the wrapping
+  key (a v2 PIN record, `src/core/pinlock.ts`).
+- *By the phone owner check:* a second copy in the phone-owner vault (`modules/ashnote-vault`, a small native module).
+  - On Android it is encrypted with the public half of an RSA-2048 key pair (OAEP) in the Android Keystore. The
+    private half needs user authentication and only decrypts for 15 seconds after a Class 3 fingerprint or face,
+    or the screen lock PIN, pattern or password. The Keystore deletes it for good if the screen lock is removed.
+  - On iPhone it is a Keychain item with the user-presence access control (Face ID, Touch ID or the passcode), this
+    device only, and only while a passcode is set.
+  - Sealing needs no prompt. The vault copy is made or refreshed whenever the PIN unlocks and the phone has a screen
+    lock.
+
+"Unlock with fingerprint or face" and Forgot PIN open the vault, so a Forgot PIN reset keeps the chats. If the phone
+had no screen lock when Ashnote was last unlocked, only the PIN can open the data, and Reset Ashnote deletes the
+database file. Relocking after a minute in the background closes the database and forgets the key.
+
+The first unlock after updating from 0.5.3 or earlier seals the old key both ways and deletes the plain copy. Settings >
+App lock then shows "Data key moved behind the lock".
+
+Limits:
+- A short PIN gives a small search space. Someone who extracts the PIN record from the hardware-backed secure storage
+  could try every 4-digit PIN offline, so the secure storage and the enforced waits remain the main protection. A
+  longer PIN helps.
+- On Android, the screen lock unlock itself counts as an owner check for the 15-second window. Anyone who knows the
+  phone's screen lock can open Ashnote's data, which is the trade-off of option B (the phone passcode is accepted on
+  purpose).
 
 Why 10,000 rounds: the app runs PBKDF2 in JavaScript on Hermes, which has no JIT, so 150,000 rounds took over 15
 seconds on a phone and the PIN screen looked stuck (found in real-phone testing on 2026-11-26). With a 4-digit PIN
 (10,000 possibilities) extra rounds add little against someone who has already extracted the record from secure
 storage; the protection is the hardware-backed storage plus the stored, enforced waits. Records saved with the old
-setting are re-saved at the next unlock. A native PBKDF2 would allow more rounds; see VLABS-464.
+setting are re-saved at the next unlock.
 
 **Contacts**. At most 50 contacts per phone (owner decision, 2026-11-26).
 

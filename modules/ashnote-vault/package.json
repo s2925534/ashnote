@@ -1,0 +1,8 @@
+{
+  "name": "ashnote-vault",
+  "version": "1.0.0",
+  "description": "Keeps Ashnote's database key behind the phone's own owner check (Android Keystore, iOS Keychain).",
+  "main": "index.ts",
+  "license": "UNLICENSED",
+  "private": true
+}
