@@ -1,7 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import * as ScreenCapture from "expo-screen-capture";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Platform, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, Linking, Platform, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { EngineProvider, useEngine } from "./src/lib/engine";
 import { Chat } from "./src/screens/Chat";
@@ -17,6 +17,9 @@ import { loadSoundPrefs, playSound } from "./src/lib/sounds";
 import { loadPrefs } from "./src/lib/prefs";
 import { ThemeModeContext, isDark, useTheme, type Theme, type ThemeMode } from "./src/ui/theme";
 import { loadSetting, saveSetting } from "./src/lib/storage";
+import { loadPin } from "./src/lib/lock";
+import { RELOCK_AFTER_MS } from "./src/core/pinlock";
+import { LockScreen } from "./src/screens/Lock";
 
 type Route =
   | { name: "home" }
@@ -132,8 +135,29 @@ export default function App() {
   );
 }
 
+// The app lock (VLABS-459) runs before the encrypted store is opened and the engine starts: until
+// the PIN (or biometrics) unlocks it, nothing is loaded. Web previews and the documentation
+// screenshot build skip it.
+const LOCK_OFF = Platform.OS === "web" || process.env.EXPO_PUBLIC_SCREENSHOT_MODE === "1";
+type LockState = "loading" | "set" | "unlock" | "open";
+
 function Root() {
   const theme = useTheme();
+  const [lock, setLock] = useState<LockState>(LOCK_OFF ? "open" : "loading");
+  useEffect(() => {
+    if (LOCK_OFF) return;
+    loadPin().then((r) => setLock(r ? "unlock" : "set")).catch(() => setLock("set"));
+    // back from the background after a while: ask again (the engine stops while locked)
+    let away = 0;
+    const sub = AppState.addEventListener("change", (s) => {
+      if (s === "background") away = Date.now();
+      else if (s === "active" && away && Date.now() - away > RELOCK_AFTER_MS) {
+        away = 0;
+        loadPin().then((r) => { if (r) setLock("unlock"); }).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, []);
   useEffect(() => {
     if (Platform.OS === "web") return;
     // Documentation screenshots only: CI's screenshot build (.github/workflows/screenshots.yml) sets this
@@ -148,9 +172,15 @@ function Root() {
     <SafeAreaProvider>
       <SafeAreaView style={[styles.fill, { backgroundColor: theme.screen }]}>
         <StatusBar style={isDark(theme) ? "light" : "dark"} />
-        <EngineProvider fallback={<View style={styles.center}><ActivityIndicator color={theme.accent} /></View>}>
-          <Screens theme={theme} />
-        </EngineProvider>
+        {lock === "open" ? (
+          <EngineProvider fallback={<View style={styles.center}><ActivityIndicator color={theme.accent} /></View>}>
+            <Screens theme={theme} />
+          </EngineProvider>
+        ) : lock === "loading" ? (
+          <View style={styles.center}><ActivityIndicator color={theme.accent} /></View>
+        ) : (
+          <LockScreen key={lock} theme={theme} initial={lock} onUnlocked={() => setLock("open")} />
+        )}
       </SafeAreaView>
     </SafeAreaProvider>
   );

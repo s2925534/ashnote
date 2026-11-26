@@ -2,7 +2,7 @@
   "expo": {
     "name": "Ashnote",
     "slug": "ashnote",
-    "version": "0.4.1",
+    "version": "0.5.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -21,7 +21,7 @@
     },
     "android": {
       "package": "com.velosolabs.ashnote",
-      "versionCode": 6,
+      "versionCode": 7,
       "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#0B1020",
@@ -104,6 +104,12 @@
           "photosPermission": "Ashnote opens your photos only so you can pick one to send.",
           "cameraPermission": "Ashnote uses the camera to scan invite codes and to take a photo you choose to send.",
           "microphonePermission": false
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Ashnote uses Face ID to unlock the app, if you switch it on in Settings."
         }
       ]
     ],

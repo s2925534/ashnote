@@ -50,6 +50,8 @@ export function saveState(s: State) {
 
 /** Wipe everything: keys, contacts and messages. */
 export async function eraseAll() {
+  if (timer) { clearTimeout(timer); timer = null; }
+  pending = null;
   const d = await open();
   d.execSync("DELETE FROM kv; VACUUM;");
 }

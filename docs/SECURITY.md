@@ -95,6 +95,19 @@ messages. Limitation: group messages use one static group key between rekeys, so
 per-message forward secrecy; a phone that is compromised while in a group exposes that group's
 messages until the next rekey.
 
+**App lock** (0.5.0, VLABS-459, the mobile app lock standard). A PIN of 4 to 8 digits is chosen on first
+run (existing installs are asked on their next open). It is stored only as PBKDF2-SHA256 (150,000
+iterations, 16-byte random salt) in the phone's secure storage (Keystore / Keychain, this device only),
+separate from the database. The lock runs before the encrypted database is opened and the engine starts,
+and again after a minute in the background (the engine and relay connections stop while locked). After 3
+wrong tries each wrong try starts a wait (30 s, doubling, capped at 1 hour); the count and the wait are
+stored, so restarting doesn't skip them, and no PIN is checked during a wait. Optional fingerprint or face
+unlock. Forgot PIN: the phone's own owner check (biometrics or its passcode) lets you choose a new PIN; if
+the phone has no screen lock, or you can't pass it, Reset Ashnote deletes the database contents, the PIN
+and the settings. There is no account, so nothing is recoverable from a server. Limitation: the database
+key is held by the phone's secure storage, not derived from the PIN, so the PIN guards the app's screens
+rather than adding a second layer of encryption.
+
 **Contacts**. At most 50 contacts per phone (owner decision, 2026-11-26).
 
 **Sign-in: exempt from the login standard** (owner decision, 2026-11-26). Pedro's web apps must have
