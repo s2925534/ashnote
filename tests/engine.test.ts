@@ -500,3 +500,21 @@ test("engine: paired phones move to the double ratchet as they chat", async () =
   assert.ok(B.e.state.contacts[b.id].messages.some((m) => m.text === "ping 2"));
   assert.ok(A.e.state.contacts[a.id].messages.some((m) => m.text === "pong 2"));
 });
+
+test("a phone holds at most 50 contacts; new pairings are refused until one is removed", async () => {
+  const relay = new FakeRelay();
+  const A = phone(relay);
+  for (let i = 0; i < 50; i++) {
+    const k = newKeyPair();
+    A.e.state.contacts["c" + i] = { id: "c" + i, myPriv: k.priv, myPub: k.pub, theirPub: newKeyPair().pub } as never;
+  }
+  assert.equal(A.e.isFull(), true);
+  assert.throws(() => A.e.createInvite(), /50 contacts/);
+  const B = phone(relay);
+  const { code } = B.e.createInvite();
+  const r = await A.e.scan(code);
+  assert.equal(r.ok, false);
+  A.e.removeContact("c0");
+  assert.equal(A.e.isFull(), false);
+  assert.equal((await A.e.scan(code)).ok, true);
+});

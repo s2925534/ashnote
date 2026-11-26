@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { stackOf, type Contact } from "../core/engine";
+import { CONTACTS_FULL, stackOf, type Contact } from "../core/engine";
 import { aliasFor } from "../core/identity";
 import { useEngine } from "../lib/engine";
 import { AlertButtons } from "../ui/AlertButtons";
@@ -79,8 +79,14 @@ export function Home({ theme, onInvite, onScan, onOpen, onToast, onSettings }: {
           <AlertButtons theme={theme} contactIds={contacts.map((c) => c.id)} onSent={onToast}
             scope={contacts.length === 1 ? "your contact" : `all ${contacts.length} contacts`} />
         )}
-        <Button label="Show invite code" primary theme={theme} onPress={onInvite} />
-        <Button label="Scan a code" theme={theme} onPress={onScan} />
+        {engine.isFull() ? (
+          <Text style={{ color: theme.muted, textAlign: "center" }}>{CONTACTS_FULL}</Text>
+        ) : (
+          <>
+            <Button label="Show invite code" primary theme={theme} onPress={onInvite} />
+            <Button label="Scan a code" theme={theme} onPress={onScan} />
+          </>
+        )}
       </View>
 
       <Dialog visible={!!confirm} onClose={() => setConfirm(null)} theme={theme} title="Remove this contact?">

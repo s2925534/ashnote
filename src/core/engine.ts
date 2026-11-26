@@ -6,6 +6,9 @@ import { initRatchet, ratchetDecrypt, ratchetEncrypt, upgrade, type RatchetState
 import { newKeyPair, unwrap, wrap } from "./wrap";
 import type { NostrEvent } from "nostr-tools/pure";
 
+/** Most contacts one phone can have (VLABS-427): keeps relay subscriptions and an SOS to everyone fast. */
+export const MAX_CONTACTS = 50;
+export const CONTACTS_FULL = `You have ${MAX_CONTACTS} contacts, the most Ashnote allows. Remove one to add someone new.`;
 export const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"];
 export const TTL_CHOICES = [0, 30_000, 300_000, 3_600_000, 86_400_000] as const; // 0 = Off
 export const DEFAULT_TTL = 300_000;
@@ -172,7 +175,13 @@ export class Engine {
   }
 
   // ---------- pairing ----------
+  /** True once this phone has MAX_CONTACTS contacts; new pairings are refused until one is removed. */
+  isFull(): boolean {
+    return Object.keys(this.state.contacts).length >= MAX_CONTACTS;
+  }
+
   createInvite(): { invite: Invite; code: string } {
+    if (this.isFull()) throw new Error(CONTACTS_FULL);
     const inv = createInvite(this.state.relays, this.deps.now());
     this.state.invites[inv.pub] = inv;
     this.rewatch();
@@ -204,6 +213,7 @@ export class Engine {
     const now = this.deps.now();
     const d = decodeInvite(code, now);
     if (!d.ok) return d;
+    if (this.isFull()) return { ok: false, reason: CONTACTS_FULL };
     if (this.state.invites[d.invite.k]) return { ok: false, reason: "That's your own code. Scan it from the other phone." };
     const me = newKeyPair();
     const safety = safetyCode(d.invite.k, me.pub);
@@ -221,6 +231,7 @@ export class Engine {
     if (!req) return;
     delete this.state.requests[invitePub];
     const now = this.deps.now();
+    if (this.isFull()) { await this.rejectRequest(invitePub, req); return; }
     if (now >= req.expiresAt) {
       this.notify({ type: "pair-expired", safety: req.safety });
       this.changed();
@@ -234,8 +245,8 @@ export class Engine {
     await this.publish(wrap(me.priv, req.requesterPub, JSON.stringify({ t: "accept" }), now, now + PAIR_TIMEOUT_MS));
   }
 
-  async rejectRequest(invitePub: string) {
-    const req = this.state.requests[invitePub];
+  async rejectRequest(invitePub: string, pending?: Request) {
+    const req = pending ?? this.state.requests[invitePub];
     if (!req) return;
     delete this.state.requests[invitePub];
     this.changed();
