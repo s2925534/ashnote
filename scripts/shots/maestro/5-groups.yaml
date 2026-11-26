@@ -1,0 +1,37 @@
+appId: com.velosolabs.ashnote
+---
+# 4-rest leaves the contact list in dark mode: one more tap goes back to System (light)
+- tapOn: "Theme: Dark.*"
+- extendedWaitUntil:
+    visible: "Theme: System.*"
+    timeout: 10000
+- tapOn: "New group"
+- extendedWaitUntil:
+    visible: "Create group"
+    timeout: 20000
+- tapOn: "Add .* to the group"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-new-group
+- tapOn: "Create group"
+- extendedWaitUntil:
+    visible: "Groups work like chats.*"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: shots/android-group-chat
+- tapOn: "Disappearing messages"
+- extendedWaitUntil:
+    visible: "Done"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: shots/android-group-timer
+- tapOn: "Done"
+- tapOn: "Back to contacts"
+- extendedWaitUntil:
+    visible: "GROUPS"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-contacts-groups

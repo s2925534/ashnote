@@ -4,6 +4,7 @@
 //   msg <text>       send a message to the paired contact
 //   sos              send an SOS with a fixed demo location (Brisbane)
 //   photo <1|2>      send one of the test photos in scripts/shots
+//   gmsg <text>      once the emulator has added us to a group (we join on our own), send to it
 // and prints every notice it gets, so the driver script can wait for "paired".
 // Usage: npx tsx scripts/shots/peer.ts <relay-url> <command-file>
 import { existsSync, readFileSync } from "node:fs";
@@ -32,6 +33,13 @@ async function run(line: string) {
   if (cmd === "photo" && contact()) {
     const b64 = readFileSync(join(__dirname, `photo${arg === "2" ? 2 : 1}.jpg`)).toString("base64");
     console.log("PHOTO", !!(await engine.sendImage(contact(), b64, 720, 960, { keepCopy: true })));
+  }
+  if (cmd === "gmsg") {
+    for (let i = 0; !engine.groupList().length && i < 300; i++) await new Promise((r) => setTimeout(r, 300));
+    const g = engine.groupList()[0];
+    // give our join a moment to reach the group's creator, who adds us to the member list
+    await new Promise((r) => setTimeout(r, 4000));
+    console.log("GSENT", !!(g && (await engine.sendGroup(g.id, arg))));
   }
   if (cmd === "sos" && contact()) {
     const loc = { lat: -27.4698, lon: 153.0251, acc: 12, at: Date.now() };
