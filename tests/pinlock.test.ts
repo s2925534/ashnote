@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { FREE_TRIES, MAX_LOCK_EVENTS, MAX_WAIT_MS, addLockEvent, makeRecord, tryPin, validPin, waitAfter, type LockEvent } from "../src/core/pinlock";
+import { PIN_ITERATIONS, FREE_TRIES, MAX_LOCK_EVENTS, MAX_WAIT_MS, addLockEvent, makeRecord, tryPin, validPin, waitAfter, type LockEvent } from "../src/core/pinlock";
 
 const salt = new Uint8Array(16).fill(7);
 const FAST = 1000; // fewer iterations to keep the tests quick
@@ -58,4 +58,13 @@ test("lock events are kept newest first, at most MAX_LOCK_EVENTS", () => {
   assert.equal(list.length, MAX_LOCK_EVENTS);
   assert.equal(list[0].kind, "phone-owner-reset");
   assert.equal(list[1].at, MAX_LOCK_EVENTS + 4);
+});
+
+test("a PIN record remembers its length, and hashing stays fast enough for a phone", async () => {
+  const r = await makeRecord("2468", salt);
+  assert.equal(r.len, 4);
+  assert.ok(PIN_ITERATIONS <= 20_000, "Hermes runs PBKDF2 without a JIT: keep the rounds low or the lock looks stuck");
+  const t = Date.now();
+  await makeRecord("246813", salt);
+  assert.ok(Date.now() - t < 2000);
 });

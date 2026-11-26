@@ -96,8 +96,8 @@ per-message forward secrecy; a phone that is compromised while in a group expose
 messages until the next rekey.
 
 **App lock** (0.5.0, VLABS-459, the mobile app lock standard). A PIN of 4 to 8 digits is chosen on first
-run (existing installs are asked on their next open). It is stored only as PBKDF2-SHA256 (150,000
-iterations, 16-byte random salt) in the phone's secure storage (Keystore / Keychain, this device only),
+run (existing installs are asked on their next open). It is stored only as PBKDF2-SHA256 (10,000
+iterations from 0.5.3, 16-byte random salt) in the phone's secure storage (Keystore / Keychain, this device only),
 separate from the database. The lock runs before the encrypted database is opened and the engine starts,
 and again after a minute in the background (the engine and relay connections stop while locked). After 5
 wrong tries each wrong try starts a wait (30 s, then 1 min, then 5 min, then 15 min each, as the
@@ -110,6 +110,12 @@ phone-owner reset, an Ashnote reset, a wait starting) is recorded on the phone o
 last 50, kept across a reset) and listed in Settings > App lock (0.5.2). Limitation: the database
 key is held by the phone's secure storage, not derived from the PIN, so the PIN guards the app's screens
 rather than adding a second layer of encryption.
+
+Why 10,000 rounds: the app runs PBKDF2 in JavaScript on Hermes, which has no JIT, so 150,000 rounds took over 15
+seconds on a phone and the PIN screen looked stuck (found in real-phone testing on 2026-11-26). With a 4-digit PIN
+(10,000 possibilities) extra rounds add little against someone who has already extracted the record from secure
+storage; the protection is the hardware-backed storage plus the stored, enforced waits. Records saved with the old
+setting are re-saved at the next unlock. A native PBKDF2 would allow more rounds; see VLABS-464.
 
 **Contacts**. At most 50 contacts per phone (owner decision, 2026-11-26).
 

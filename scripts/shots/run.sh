@@ -29,6 +29,7 @@ flow() { maestro test "scripts/shots/maestro/$1.yaml" || fail "$1"; }
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null || true
 sleep 10
 adb logcat -c
+flow 0-lock
 flow 1-start
 CODE=$(adb logcat -d -s ReactNativeJS:* | grep -o 'ashnote:1:[A-Za-z0-9_-]*' | tail -1)
 [ -n "$CODE" ] || fail "no invite code in the log"

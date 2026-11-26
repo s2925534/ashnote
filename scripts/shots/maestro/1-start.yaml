@@ -5,6 +5,15 @@ appId: com.velosolabs.ashnote
     commands:
       - launchApp:
           stopApp: true
+      # the app lock asks for the PIN set in 0-lock
+      - runFlow:
+          when:
+            visible: "Enter your PIN"
+          commands:
+            - tapOn: "2"
+            - tapOn: "4"
+            - tapOn: "6"
+            - tapOn: "8"
       - extendedWaitUntil:
           visible: "Show invite code"
           timeout: 45000

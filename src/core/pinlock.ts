@@ -7,7 +7,11 @@ import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 
 export const PIN_MIN = 4;
 export const PIN_MAX = 8;
-export const PIN_ITERATIONS = 150_000;
+// 10,000 rounds: well under a second on a phone (React Native's Hermes engine runs this pure-JS PBKDF2
+// without a JIT, so 150,000 rounds took over 15 s and looked stuck, found in testing on 2026-11-26).
+// A 4-digit PIN's protection is the secure storage and the waits after wrong tries, not the rounds.
+export const PIN_ITERATIONS = 10_000;
+export const PIN_DEFAULT_LENGTH = 4;
 // The mobile app lock standard (owner's rule, 2026-11-26): after 5 wrong tries,
 // waits of 30 s, 1 min, 5 min, then 15 min for every further wrong try.
 export const FREE_TRIES = 5;
@@ -15,7 +19,7 @@ export const WAITS_MS = [30_000, 60_000, 300_000] as const;
 export const MAX_WAIT_MS = 900_000;
 export const RELOCK_AFTER_MS = 60_000; // back from the background after a minute: ask again
 
-export type PinRecord = { v: 1; salt: string; hash: string; iterations: number; fails: number; waitUntil: number };
+export type PinRecord = { v: 1; salt: string; hash: string; iterations: number; fails: number; waitUntil: number; len?: number };
 
 export function validPin(pin: string): boolean {
   return new RegExp(`^[0-9]{${PIN_MIN},${PIN_MAX}}$`).test(pin);
@@ -28,7 +32,7 @@ async function derive(pin: string, saltHex: string, iterations: number): Promise
 export async function makeRecord(pin: string, salt: Uint8Array, iterations = PIN_ITERATIONS): Promise<PinRecord> {
   if (!validPin(pin)) throw new Error("A PIN is 4 to 8 digits.");
   const saltHex = bytesToHex(salt);
-  return { v: 1, salt: saltHex, hash: await derive(pin, saltHex, iterations), iterations, fails: 0, waitUntil: 0 };
+  return { v: 1, salt: saltHex, hash: await derive(pin, saltHex, iterations), iterations, fails: 0, waitUntil: 0, len: pin.length };
 }
 
 /** How long to wait after this many wrong tries in a row (0 while tries are still free). */
