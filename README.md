@@ -53,7 +53,8 @@ the scan screen takes pasted code text).
 
 CI (`.github/workflows/app.yml`) runs the tests on every push. A tag `vX.Y.Z` (matching
 `app.json`) or a manual run builds the signed APK and AAB, attaches them to a private GitHub
-Release, and publishes the APK to velosolabs.com/ashnote/download. Every new version goes up
+Release, and publishes the APK to the VelosoLabs store (which serves velosolabs.com/ashnote/download),
+signed in with the workflow's own GitHub OIDC token, so no upload secret is stored. Every new version goes up
 there as soon as it's released (owner's rule, 2026-11-26), until the VelosoLabs app store is ready:
 then the download page sends people to the store instead. The APK build (`EXPO_PUBLIC_DIST=apk`)
 also shows a "Support Ashnote" tip link in Settings; the store AAB doesn't, since app stores don't

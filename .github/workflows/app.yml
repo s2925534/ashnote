@@ -119,13 +119,15 @@ jobs:
           gh release upload "$TAG" dist/* --clobber
       - name: Publish the APK on velosolabs.com
         if: steps.sign.outputs.signed == 'true'
-        env:
-          TOKEN: ${{ secrets.HUB_ADMIN_TOKEN }}
+        # Uploads to the VelosoLabs store as a production release, signed in with this workflow's own
+        # GitHub OIDC token (accepted for s2925534/ashnote on main or a tag; no stored secret). The store
+        # serves /ashnote/download, the download page and apps.velosolabs.com/ashnote from this release.
         run: |
-          if [ -z "$TOKEN" ]; then echo "HUB_ADMIN_TOKEN not set: skipping the public download"; exit 0; fi
-          curl -fsS -X POST "https://velosolabs.com/api/v1/admin/ashnote/upload" \
+          TOKEN=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://velosolabs.com" | jq -r .value)
+          curl -fsS -X POST "https://velosolabs.com/api/v1/admin/store/ashnote/releases" \
             -H "Authorization: Bearer $TOKEN" \
-            --form-string "version=$VERSION" --form-string "changelog=$(cat "release-notes/$VERSION.md")" \
+            --form-string "track=production" --form-string "changelog=$(cat "release-notes/$VERSION.md")" \
             -F "file=@dist/ashnote-$VERSION.apk"
 
       - name: Release notes on the VelosoLabs store
