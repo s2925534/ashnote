@@ -71,3 +71,20 @@ export function describeWait(ms: number): string {
   const m = Math.ceil(s / 60);
   return `${m} min`;
 }
+
+// Lock security events (the app lock standard: every lock reset is recorded on the phone).
+export type LockEventKind = "pin-set" | "pin-changed" | "phone-owner-reset" | "app-reset" | "wait-started";
+export type LockEvent = { at: number; kind: LockEventKind };
+export const MAX_LOCK_EVENTS = 50;
+export const LOCK_EVENT_LABELS: Record<LockEventKind, string> = {
+  "pin-set": "PIN chosen",
+  "pin-changed": "PIN changed",
+  "phone-owner-reset": "Forgot PIN: phone owner confirmed",
+  "app-reset": "Ashnote reset",
+  "wait-started": "Wrong PINs: wait started",
+};
+
+/** Adds an event, newest first, keeping at most MAX_LOCK_EVENTS. */
+export function addLockEvent(list: LockEvent[], ev: LockEvent): LockEvent[] {
+  return [ev, ...list].slice(0, MAX_LOCK_EVENTS);
+}

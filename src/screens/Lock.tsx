@@ -23,6 +23,7 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
   const [confirmReset, setConfirmReset] = useState(false);
   const [canOwner, setCanOwner] = useState(false);
   const [bio, setBio] = useState(false);
+  const [viaOwner, setViaOwner] = useState(false);
 
   useEffect(() => {
     deviceLockAvailable().then(setCanOwner);
@@ -47,7 +48,7 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
     if (stage === "set") { setFirst(entry); setEntry(""); setMsg(""); setStage("confirm"); return; }
     if (stage === "confirm") {
       if (entry !== first) { setEntry(""); setFirst(""); setStage("set"); setMsg("The PINs didn't match. Choose one again."); return; }
-      setBusy(true); await setPin(entry); setBusy(false); onUnlocked(); return;
+      setBusy(true); await setPin(entry, viaOwner ? "phone-owner-reset" : undefined); setBusy(false); onUnlocked(); return;
     }
     setBusy(true);
     const r = await checkPin(entry);
@@ -66,7 +67,7 @@ export function LockScreen({ theme, initial, onUnlocked }: { theme: Theme; initi
 
   const ownerCheck = async () => {
     setForgot(false);
-    if (await confirmPhoneOwner()) { setEntry(""); setFirst(""); setMsg("Phone confirmed. Choose a new PIN."); setStage("set"); }
+    if (await confirmPhoneOwner()) { setViaOwner(true); setEntry(""); setFirst(""); setMsg("Phone confirmed. Choose a new PIN."); setStage("set"); }
     else setMsg("The phone check didn't go through.");
   };
   const reset = async () => {

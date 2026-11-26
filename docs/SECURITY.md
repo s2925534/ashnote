@@ -105,7 +105,9 @@ mobile app lock standard sets); the count and the wait are
 stored, so restarting doesn't skip them, and no PIN is checked during a wait. Optional fingerprint or face
 unlock. Forgot PIN: the phone's own owner check (biometrics or its passcode) lets you choose a new PIN; if
 the phone has no screen lock, or you can't pass it, Reset Ashnote deletes the database contents, the PIN
-and the settings. There is no account, so nothing is recoverable from a server. Limitation: the database
+and the settings. There is no account, so nothing is recoverable from a server. Every lock event (PIN chosen or changed, a
+phone-owner reset, an Ashnote reset, a wait starting) is recorded on the phone only (secure storage,
+last 50, kept across a reset) and listed in Settings > App lock (0.5.2). Limitation: the database
 key is held by the phone's secure storage, not derived from the PIN, so the PIN guards the app's screens
 rather than adding a second layer of encryption.
 
