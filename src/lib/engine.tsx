@@ -16,19 +16,24 @@ export function EngineProvider({ children, fallback }: { children: ReactNode; fa
 
   useEffect(() => {
     let cancelled = false;
+    let made: { engine: Engine; transport: NostrTransport } | null = null;
     (async () => {
       const state = await loadState();
       if (cancelled) return;
       const transport = new NostrTransport(() => engineRef.current?.state.relays ?? []);
       // EXPO_PUBLIC_RELAYS (comma-separated) overrides the default relays, for tests and previews.
       const override = process.env.EXPO_PUBLIC_RELAYS?.split(",").map((r: string) => r.trim()).filter(Boolean);
-      const engine = new Engine(state ?? (override?.length ? emptyState(override) : null), { transport, now: () => Date.now(), save: saveState });
+      // Once this provider is gone (the app locked, or Ashnote was reset) the old engine must not
+      // write to the store again, or a late save could bring back wiped data (VLABS-459).
+      const engine = new Engine(state ?? (override?.length ? emptyState(override) : null),
+        { transport, now: () => Date.now(), save: (s) => { if (!cancelled) saveState(s); } });
       engineRef.current = engine;
       engine.tick();
       engine.start();
-      setReady({ engine, transport });
+      made = { engine, transport };
+      setReady(made);
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; made?.transport.close(); };
   }, []);
 
   useEffect(() => {

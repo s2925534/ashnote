@@ -3,6 +3,8 @@ import Constants from "expo-constants";
 import { Linking, Platform, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { DEFAULT_PREFS, SOUNDS, loadSoundPrefs, playSound, setSoundPref, type SoundPrefs } from "../lib/sounds";
 import { loadPrefs, setReplyClears } from "../lib/prefs";
+import { biometricsAvailable, biometricsOn, setBiometrics } from "../lib/lock";
+import { LockScreen } from "./Lock";
 import { Button, ColorModeButton, IconButton } from "../ui/kit";
 import { useThemeMode, type Theme } from "../ui/theme";
 
@@ -10,7 +12,16 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
   const [prefs, setPrefs] = useState<SoundPrefs>(DEFAULT_PREFS);
   const { mode } = useThemeMode();
   const [replyClears, setRC] = useState(true);
-  useEffect(() => { loadSoundPrefs().then(setPrefs); loadPrefs().then((p) => setRC(p.replyClears)); }, []);
+  const [bioAvail, setBioAvail] = useState(false);
+  const [bio, setBio] = useState(false);
+  const [changingPin, setChangingPin] = useState(false);
+  const lockOn = Platform.OS !== "web" && process.env.EXPO_PUBLIC_SCREENSHOT_MODE !== "1";
+  useEffect(() => {
+    loadSoundPrefs().then(setPrefs); loadPrefs().then((p) => setRC(p.replyClears));
+    if (lockOn) { biometricsAvailable().then(setBioAvail); biometricsOn().then(setBio); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (changingPin) return <LockScreen theme={theme} initial="set" onUnlocked={() => setChangingPin(false)} />;
   return (
     <View style={styles.fill}>
       <View style={[styles.head, { borderColor: theme.line }]}>
@@ -55,6 +66,24 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
               onValueChange={(v) => setSoundPref(s.key, v).then(setPrefs)} />
           </View>
         ))}
+
+        {lockOn && (
+          <>
+            <Text style={[styles.h, { color: theme.ink }]}>App lock</Text>
+            <Text style={[styles.hint, { color: theme.muted }]}>
+              Ashnote asks for your PIN when it opens and after a minute in the background. Only this phone knows the PIN.
+              If you forget it, your phone's fingerprint, face or passcode lets you choose a new one.
+            </Text>
+            {bioAvail && (
+              <View style={[styles.row, { borderColor: theme.line }]}>
+                <Text style={[styles.label, { color: theme.ink, flex: 1 }]}>Unlock with fingerprint or face</Text>
+                <Switch value={bio} accessibilityLabel="Unlock with fingerprint or face"
+                  onValueChange={(v) => { setBio(v); setBiometrics(v).catch(() => {}); }} />
+              </View>
+            )}
+            <Button label="Change PIN" theme={theme} onPress={() => setChangingPin(true)} />
+          </>
+        )}
 
         <Text style={[styles.h, { color: theme.ink }]}>Updates</Text>
         <Text style={[styles.hint, { color: theme.muted }]}>
