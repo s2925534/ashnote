@@ -1,0 +1,39 @@
+appId: com.velosolabs.ashnote
+---
+- extendedWaitUntil:
+    visible: "Show next photo"
+    timeout: 90000
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: shots/android-photo-queue
+- tapOn: "Disappearing messages"
+- extendedWaitUntil:
+    visible: "Done"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-timer-setting
+- tapOn: "Done"
+- tapOn: "SOS or Help"
+- extendedWaitUntil:
+    visible: "Help: Not an emergency"
+    timeout: 20000
+- longPressOn: "Help: Not an emergency"
+- extendedWaitUntil:
+    visible: "Share location"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: shots/android-help-ask
+- tapOn: "Share location"
+- waitForAnimationToEnd:
+    timeout: 4000
+# Android asks only the first time; on an emulator that already has the permission, skip
+- runFlow:
+    when:
+      visible: "While using the app"
+    commands:
+      - takeScreenshot: shots/android-location-prompt
+      - tapOn: "While using the app"
+- waitForAnimationToEnd:
+    timeout: 4000

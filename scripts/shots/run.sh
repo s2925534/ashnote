@@ -8,7 +8,11 @@ node scripts/dev-relay.js 7777 > relay.log 2>&1 &
 rm -f peer-commands.txt
 npx tsx scripts/shots/peer.ts ws://localhost:7777 peer-commands.txt > peer.log 2>&1 &
 adb reverse tcp:7777 tcp:7777
+adb emu geo fix 153.0251 -27.4698 || true
 adb install -r -g android/app/build/outputs/apk/release/app-release.apk
+# -g grants every permission; take location back so the real first-use prompt can be captured
+adb shell pm revoke com.velosolabs.ashnote android.permission.ACCESS_FINE_LOCATION || true
+adb shell pm revoke com.velosolabs.ashnote android.permission.ACCESS_COARSE_LOCATION || true
 
 # tidy status bar
 adb shell settings put global sysui_demo_allowed 1
@@ -33,6 +37,9 @@ flow 2-accept
 sleep 3
 echo "msg Hi! Got your code. This message deletes itself 5 minutes after you read it." >> peer-commands.txt
 flow 3-chat
+echo "photo 1" >> peer-commands.txt
+echo "photo 2" >> peer-commands.txt
+flow 3b-more
 echo "sos" >> peer-commands.txt
 flow 4-rest
 cat peer.log
