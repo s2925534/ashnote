@@ -83,7 +83,28 @@ into 16,000-character pieces, each a separate ratchet message and gift wrap. Tem
 to velosolabs.com with its SHA-256. Signing certificate SHA-256
 `A6:02:48:0D:FF:33:3D:E4:B7:36:E5:FE:AA:1F:12:BE:F2:F7:A2:D8:3C:DE:62:81:A3:FC:6A:9B:C9:EC:18:47`.
 
+**Groups** (0.4.0, VLABS-427). Up to 8 members, 20 groups per phone, text only. The creator makes a
+group key pair and a member key for itself, then sends the group private key to each invited contact
+over their pairwise Double Ratchet channel (`ginv`). Each member answers with a fresh member key for
+this group (`gjoin`), and the creator publishes the member list (`groster`). Group messages are gift
+wraps addressed to the group public key and sealed with the sender's member key; a receiver drops
+anything not sealed by a listed member, and only the creator may change the list or end the group
+(`gend`). When someone leaves (`gleave`) the creator makes a new group key and sends it to the
+remaining members over their pairwise channels (`gkey`), so a member who left can't read later
+messages. Limitation: group messages use one static group key between rekeys, so they get no
+per-message forward secrecy; a phone that is compromised while in a group exposes that group's
+messages until the next rekey.
+
+**Contacts**. At most 50 contacts per phone (owner decision, 2026-11-26).
+
+**Sign-in: exempt from the login standard** (owner decision, 2026-11-26). Pedro's web apps must have
+their own email/password, passkey and emailed-code sign-in. Ashnote is a phone app with no accounts,
+no server and no email address by design: each contact is a fresh key pair kept in the phone's
+encrypted store, so there is nothing to sign in to. The phone's own lock screen protects the app.
+
 ## Known limitations and questions for the reviewer
+
+- Groups have no per-message forward secrecy between rekeys (see Groups above).
 
 - Metadata: relays see recipient contact keys, timing, sizes and IPs. Is the gift wrap plus per-contact
   keys enough, or should we pad sizes or add cover traffic?

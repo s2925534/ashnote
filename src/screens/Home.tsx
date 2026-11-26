@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { CONTACTS_FULL, stackOf, type Contact } from "../core/engine";
+import { CONTACTS_FULL, MAX_GROUPS, stackOf, type Contact, type Group } from "../core/engine";
 import { aliasFor } from "../core/identity";
 import { useEngine } from "../lib/engine";
 import { AlertButtons } from "../ui/AlertButtons";
@@ -9,12 +9,16 @@ import { Button, ColorModeButton, Dialog, IconButton } from "../ui/kit";
 import { Mark } from "../ui/Mark";
 import type { Theme } from "../ui/theme";
 
-export function Home({ theme, onInvite, onScan, onOpen, onToast, onSettings }: {
-  theme: Theme; onInvite: () => void; onScan: () => void; onOpen: (id: string) => void; onToast: (t: string) => void; onSettings: () => void;
+export function Home({ theme, onInvite, onScan, onOpen, onOpenGroup, onNewGroup, onToast, onSettings }: {
+  theme: Theme; onInvite: () => void; onScan: () => void; onOpen: (id: string) => void; onOpenGroup: (id: string) => void; onNewGroup: () => void;
+  onToast: (t: string) => void; onSettings: () => void;
 }) {
   const { engine, transport } = useEngine();
   const [confirm, setConfirm] = useState<Contact | null>(null);
+  const [leaving, setLeaving] = useState<Group | null>(null);
   const contacts = Object.values(engine.state.contacts).sort((a, b) => b.pairedAt - a.pairedAt);
+  const groups = engine.groupList();
+  const canNewGroup = contacts.length > 0 && groups.length < MAX_GROUPS;
   const relays = transport.connected();
 
   return (
@@ -31,7 +35,7 @@ export function Home({ theme, onInvite, onScan, onOpen, onToast, onSettings }: {
         </View>
       </View>
 
-      {contacts.length === 0 ? (
+      {contacts.length === 0 && groups.length === 0 ? (
         <View style={styles.empty}>
           <Mark size={72} theme={theme} />
           <Text style={[styles.emptyTitle, { color: theme.ink }]}>Private chat</Text>
@@ -71,6 +75,39 @@ export function Home({ theme, onInvite, onScan, onOpen, onToast, onSettings }: {
               </Pressable>
             );
           }}
+          ListFooterComponent={
+            <View style={{ marginTop: 18 }}>
+              <View style={[styles.row, styles.head, { borderColor: theme.line }]}>
+                <Text style={[styles.th, { color: theme.muted, flex: 1 }]}>GROUPS</Text>
+                {canNewGroup && <IconButton icon="plus" label="New group" theme={theme} onPress={onNewGroup} />}
+              </View>
+              {groups.length === 0 ? (
+                <Text style={{ color: theme.muted, fontSize: 13, paddingVertical: 12 }}>
+                  No groups yet. A group is up to 8 people, all your contacts or theirs. Tap + to start one.
+                </Text>
+              ) : groups.map((g) => {
+                const unread = g.messages.filter((m) => m.side === "theirs" && m.readAt == null).length;
+                const mine = g.creator === g.me.pub;
+                const name = groupName(g);
+                return (
+                  <Pressable key={g.id} onPress={() => onOpenGroup(g.id)} accessibilityRole="button" accessibilityLabel={`Open group ${name}`}
+                    style={[styles.row, { borderColor: theme.line }]}>
+                    <Avatar pubkey={g.id.slice(0, 64).padEnd(64, "0")} size={40} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text numberOfLines={1} style={[styles.alias, { color: theme.ink }]}>{name}</Text>
+                      <Text numberOfLines={1} style={{ color: theme.muted, fontSize: 12 }}>
+                        {g.ended ? "Ended by its creator · " : unread ? `${unread} unread · ` : ""}{g.members.length} people · You appear as {aliasFor(g.me.pub)}
+                      </Text>
+                    </View>
+                    <View style={styles.actions}>
+                      <IconButton icon="chat" label="Open group" theme={theme} onPress={() => onOpenGroup(g.id)} />
+                      <IconButton icon="trash" label={mine && !g.ended ? "End group" : "Leave group"} theme={theme} danger onPress={() => setLeaving(g)} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          }
         />
       )}
 
@@ -96,8 +133,25 @@ export function Home({ theme, onInvite, onScan, onOpen, onToast, onSettings }: {
         <Button label="Remove contact" danger theme={theme} onPress={() => { if (confirm) engine.removeContact(confirm.id); setConfirm(null); }} />
         <Button label="Keep" theme={theme} onPress={() => setConfirm(null)} />
       </Dialog>
+      <Dialog visible={!!leaving} onClose={() => setLeaving(null)} theme={theme} title={leaving && leaving.creator === leaving.me.pub && !leaving.ended ? "End this group?" : "Leave this group?"}>
+        <Text style={{ color: theme.muted, fontSize: 14 }}>
+          {leaving ? (leaving.creator === leaving.me.pub && !leaving.ended
+            ? "You started this group. Ending it closes it for everyone and deletes it from this phone."
+            : "The group and its messages are deleted from this phone. The others get a new group key, so you can't read anything sent after you leave.") : ""}
+        </Text>
+        <Button label={leaving && leaving.creator === leaving.me.pub && !leaving.ended ? "End group" : "Leave group"} danger theme={theme}
+          onPress={() => { if (leaving) void engine.leaveGroup(leaving.id); setLeaving(null); }} />
+        <Button label="Stay" theme={theme} onPress={() => setLeaving(null)} />
+      </Dialog>
     </View>
   );
+}
+
+/** A group has no name (nothing to leak): it is called after the first members' aliases. */
+export function groupName(g: Group): string {
+  const others = g.members.filter((m) => m !== g.me.pub).map(aliasFor);
+  if (!others.length) return "Waiting for people to join";
+  return others.length <= 2 ? others.join(", ") : `${others.slice(0, 2).join(", ")} +${others.length - 2}`;
 }
 
 const styles = StyleSheet.create({

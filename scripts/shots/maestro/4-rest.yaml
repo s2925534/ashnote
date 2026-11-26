@@ -22,10 +22,10 @@ appId: com.velosolabs.ashnote
     timeout: 2000
 - takeScreenshot: shots/android-settings
 - tapOn: "Back"
-- tapOn: "Colour mode: System.*"
-- tapOn: "Colour mode: Light.*"
+- tapOn: "Theme: System.*"
+- tapOn: "Theme: Light.*"
 - extendedWaitUntil:
-    visible: "Colour mode: Dark.*"
+    visible: "Theme: Dark.*"
     timeout: 10000
 - waitForAnimationToEnd:
     timeout: 2500

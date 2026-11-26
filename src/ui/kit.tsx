@@ -105,6 +105,8 @@ const styles = StyleSheet.create({
 export function ColorModeButton({ theme }: { theme: Theme }) {
   const { mode, setMode } = useThemeMode();
   const icon = mode === "system" ? "system" : mode === "light" ? "sun" : "moon";
-  const label = `Colour mode: ${mode === "system" ? "System" : mode === "light" ? "Light" : "Dark"}. Switch to ${NEXT_MODE[mode]}.`;
+  // Same icons, order and wording as zqx.io's theme toggle (apps/site/app/theme-toggle.tsx) and velosolabs.com.
+  const name = (m: typeof mode) => (m === "system" ? "System" : m === "light" ? "Light" : "Dark");
+  const label = `Theme: ${name(mode)} (tap for ${name(NEXT_MODE[mode])})`;
   return <IconButton icon={icon} label={label} theme={theme} onPress={() => setMode(NEXT_MODE[mode])} />;
 }
