@@ -7,7 +7,7 @@ name: app
 #
 # Secrets: ASHNOTE_KEYSTORE_BASE64, ASHNOTE_KEYSTORE_PASSWORD, ASHNOTE_KEY_ALIAS,
 # ASHNOTE_KEY_PASSWORD (upload key; without them the build is debug-signed and marked as a
-# test build), HUB_ADMIN_TOKEN (velosolabs.com admin API token, for the public APK).
+# test build). Publishing needs no secret: the store accepts this workflow's GitHub OIDC token.
 
 on:
   push:

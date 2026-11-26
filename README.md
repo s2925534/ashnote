@@ -66,7 +66,8 @@ in step. Store submissions (App Store,
 Google Play) are owner actions: VLABS-410, VLABS-411. F-Droid was dropped (owner decision, 2026-11-26).
 
 Secrets: `ASHNOTE_KEYSTORE_BASE64`, `ASHNOTE_KEYSTORE_PASSWORD`, `ASHNOTE_KEY_ALIAS`,
-`ASHNOTE_KEY_PASSWORD`, `HUB_ADMIN_TOKEN`.
+`ASHNOTE_KEY_PASSWORD`. Publishing to the store uses the workflow's GitHub OIDC token, so the old
+`HUB_ADMIN_TOKEN` secret is no longer used and can be deleted.
 
 ## Licence
 
