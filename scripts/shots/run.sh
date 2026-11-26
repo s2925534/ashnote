@@ -10,6 +10,9 @@ npx tsx scripts/shots/peer.ts ws://localhost:7777 peer-commands.txt > peer.log 2
 adb reverse tcp:7777 tcp:7777
 adb emu geo fix 153.0251 -27.4698 || true
 adb install -r -g android/app/build/outputs/apk/release/app-release.apk
+# -g grants every permission; take location back so the real first-use prompt can be captured
+adb shell pm revoke com.velosolabs.ashnote android.permission.ACCESS_FINE_LOCATION || true
+adb shell pm revoke com.velosolabs.ashnote android.permission.ACCESS_COARSE_LOCATION || true
 
 # tidy status bar
 adb shell settings put global sysui_demo_allowed 1
