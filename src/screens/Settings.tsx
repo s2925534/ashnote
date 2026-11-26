@@ -6,6 +6,7 @@ import { loadPrefs, setReplyClears } from "../lib/prefs";
 import { biometricsAvailable, biometricsOn, lockEvents, setBiometrics } from "../lib/lock";
 import { LOCK_EVENT_LABELS, type LockEvent } from "../core/pinlock";
 import { LockScreen } from "./Lock";
+import { LATEST_VERSION_URL, TIP_URL } from "../core/links";
 import { Button, ColorModeButton, IconButton } from "../ui/kit";
 import { useThemeMode, type Theme } from "../ui/theme";
 
@@ -104,13 +105,14 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
 
         <Text style={[styles.h, { color: theme.ink }]}>Updates</Text>
         <Text style={[styles.hint, { color: theme.muted }]}>
-          Version {Constants.expoConfig?.version ?? "?"}. New versions are on velosolabs.com/ashnote/download: install the new file over
-          this one and your contacts and settings stay.
+          Version {Constants.expoConfig?.version ?? "?"}. New versions are on apps.velosolabs.com/ashnote (the download asks for a free
+          VelosoLabs account; Ashnote itself never does and never sends one). Install the new file over this one and your
+          contacts and settings stay.
           {Platform.OS === "android"
             ? " On Samsung phones, switch off Auto Blocker (Settings › Security and privacy › Auto Blocker) while you install, then switch it back on. Google Play Protect checks the file first."
             : ""}
         </Text>
-        <Button label="Get the latest version" theme={theme} onPress={() => Linking.openURL("https://velosolabs.com/ashnote/download")} />
+        <Button label="Get the latest version" theme={theme} onPress={() => Linking.openURL(LATEST_VERSION_URL)} />
 
         {process.env.EXPO_PUBLIC_DIST === "apk" && (
           <>
@@ -119,7 +121,7 @@ export function Settings({ theme, onBack }: { theme: Theme; onBack: () => void }
               Ashnote is free, with no ads and no tracking. If it's useful to you, you can leave a one-off tip on velosolabs.com.
               It doesn't unlock anything, and nothing about your chats or contacts is sent.
             </Text>
-            <Button label="Leave a tip" theme={theme} onPress={() => Linking.openURL("https://velosolabs.com/ashnote/support")} />
+            <Button label="Leave a tip" theme={theme} onPress={() => Linking.openURL(TIP_URL)} />
           </>
         )}
       </ScrollView>
